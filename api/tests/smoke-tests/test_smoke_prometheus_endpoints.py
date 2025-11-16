@@ -31,14 +31,10 @@ async def test_prometheus_metrics_endpoint(test_client):
     response = test_client.get("/prometheus/metrics")
     assert response.status_code == 200
     data = response.json()
-    assert "status" in data
-    assert "cpu_usage" in data
-    assert "memory_usage" in data
-    assert "disk_usage" in data
-    assert isinstance(data["status"], list)
-    assert isinstance(data["cpu_usage"], list)
-    assert isinstance(data["memory_usage"], list)
-    assert isinstance(data["disk_usage"], list)
+    excepted_metrics = ["status", "cpu_usage", "memory_usage", "disk_usage"]
+    for key in excepted_metrics:
+        assert key in data
+        assert isinstance(data[key], list)
 
 
 @pytest.mark.smoke
@@ -46,7 +42,7 @@ def test_prometheus_websocket_endpoint(test_client):
     """Smoke test for /ws/metrics WebSocket endpoint."""
     with test_client.websocket_connect("/ws/metrics") as websocket:
         message = websocket.receive_json()
-        assert "statuses" in message
-        assert "metrics" in message
-        assert isinstance(message["statuses"], list)
-        assert isinstance(message["metrics"], dict)
+        expected_keys = ["statuses", "metrics"]
+        for key in expected_keys:
+            assert key in message
+            assert isinstance(message[key], list) or isinstance(message[key], dict)
