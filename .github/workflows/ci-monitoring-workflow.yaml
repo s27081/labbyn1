@@ -1,0 +1,24 @@
+name: CI Monitoring Workflow
+on:
+  pull_request:
+    types: [opened, edited]
+    branches:
+      - dev
+    paths:
+      - 'monitoring/**'
+  
+jobs:
+    test-prometheus:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Run prometheus tests
+          uses: ./.github/workflows/reusable-workflows/ci-monitoring.yaml
+          with:
+            monitoring-tool: 'prometheus'
+    test-grafana:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Run grafana tests
+          uses: ./.github/workflows/reusable-workflows/ci-monitoring.yaml
+          with:
+            monitoring-tool: 'grafana'

@@ -1,0 +1,18 @@
+name: CI API Workflow
+on:
+  pull_request:
+    types: [opened, edited]
+    branches:
+      - dev
+    paths:
+      - 'api/**'
+  
+jobs:
+    test-api:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Run api tests
+          uses: ./.github/reusable-workflows/ci-api.yaml
+          with:
+            python-version: '3.12'
+
