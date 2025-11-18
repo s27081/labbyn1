@@ -14,10 +14,6 @@ jobs:
           with:
             fetch-depth: 0
             persist-credentials: false
-        - name: Cache Docker Image
-          uses: ScribeMD/docker-cache@0.5.0
-          with:
-            key: docker-${{ runner.os }}-${{ hashFiles('.github/workflows/lint-workflow.yaml') }}
         - name: Run Super Linter
           uses: github/super-linter@v4
           env:
