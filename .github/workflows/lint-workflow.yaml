@@ -14,16 +14,10 @@ jobs:
           with:
             fetch-depth: 0
             persist-credentials: false
-        - name: Cache Docker layers
-          uses: actions/cache@v4
+        - name: Cache Docker Image
+          uses: ScribeMD/docker-cache@0.5.0
           with:
-            path: /var/lib/docker
-            key: docker-super-linter-${{ runner.os }}-${{ hashFiles('.github/workflows/lint-workflow.yml') }}
-            restore-keys: |
-              docker-super-linter-${{ runner.os }}-
-        - name: Pull super-linter image
-          run: |
-            docker pull ghcr.io/github/super-linter:v4.10.0
+            key: docker-${{ runner.os }}-${{ hashFiles('.github/workflows/lint-workflow.yaml') }}
         - name: Run Super Linter
           uses: github/super-linter@v4
           env:
