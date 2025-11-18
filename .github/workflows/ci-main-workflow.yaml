@@ -6,16 +6,16 @@ on:
       - main
 jobs:
     ci-api:
-        uses: ./.github/workflows/reusable-workflows/ci-api.yaml
+        uses: ./.github/workflows/ci-api.yaml
         with:
           python-version: '3.12'
     ci-frontend:
-        uses: ./.github/workflows/reusable-workflows/ci-frontend.yaml
+        uses: ./.github/workflows/ci-frontend.yaml
     ci-prometheus:
-        uses: ./.github/workflows/reusable-workflows/ci-monitoring.yaml
+        uses: ./.github/workflows/ci-monitoring.yaml
         with:
           monitoring-tool: 'prometheus'
     ci-grafana:
-        uses: ./.github/workflows/reusable-workflows/ci-monitoring.yaml
+        uses: ./.github/workflows/ci-monitoring.yaml
         with:
           monitoring-tool: 'grafana'
