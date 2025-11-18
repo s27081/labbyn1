@@ -1,6 +1,5 @@
 name: Lint Workflow
 on:
-  push: {}
   pull_request: {}
 jobs:
     lint:
@@ -24,7 +23,7 @@ jobs:
               docker-super-linter-${{ runner.os }}-
         - name: Pull super-linter image
           run: |
-            docker pull ghcr.io/super-linter/super-linter:latest
+            docker pull ghcr.io/github/super-linter:v4.10.0
         - name: Run Super Linter
           uses: github/super-linter@v4
           env:
