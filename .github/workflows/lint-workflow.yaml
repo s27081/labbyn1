@@ -18,7 +18,7 @@ jobs:
           uses: actions/cache@v4
           with:
             path: /var/lib/docker
-            key: docker-super-linter-${{ runner.os }}-${{ hashFiles('.github/workflows/lint.yml') }}
+            key: docker-super-linter-${{ runner.os }}-${{ hashFiles('.github/workflows/lint-workflow.yml') }}
             restore-keys: |
               docker-super-linter-${{ runner.os }}-
         - name: Pull super-linter image
