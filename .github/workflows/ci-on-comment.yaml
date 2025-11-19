@@ -2,10 +2,7 @@ name: Run Workflow on PR Comment
 on:
   issue_comment:
     types: [created]
-permissions:
-  contents: read
-  pull-requests: write
-  checks: write
+  
 jobs:
   run-api-test-set:
     if: github.event.issue.pull_request && (contains(github.event.comment.body, '/test all') || contains(github.event.comment.body, '/test api'))
@@ -23,3 +20,43 @@ jobs:
     uses: ./.github/workflows/ci-monitoring.yaml
     with:
         monitoring-tool: 'grafana'
+  post-comment:
+    needs:
+      - run-api-test-set
+      - run-frontend-test-set
+      - run-prometheus-test-set
+      - run-grafana-test-set
+    if: github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Build dynamic PR comment
+        id: build_comment
+        run: |
+          COMMENT="🤖 Tests triggered:\n"
+          
+          if [[ "${{ needs.run-api-test-set.result }}" != "skipped" ]]; then
+            COMMENT+="✅ [Run API Tests](${{ needs.run-api-test-set.html_url }})\n"
+          fi
+
+          if [[ "${{ needs.run-frontend-test-set.result }}" != "skipped" ]]; then
+            COMMENT+="✅ [Run Frontend Tests](${{ needs.run-frontend-test-set.html_url }})\n"
+          fi
+
+          if [[ "${{ needs.run-prometheus-test-set.result }}" != "skipped" ]]; then
+            COMMENT+="✅ [Run Prometheus Tests](${{ needs.run-prometheus-test-set.html_url }})\n"
+          fi
+
+          if [[ "${{ needs.run-grafana-test-set.result }}" != "skipped" ]]; then
+            COMMENT+="✅ [Run Grafana Tests](${{ needs.run-grafana-test-set.html_url }})\n"
+          fi
+
+          echo "comment_body=$COMMENT" >> $GITHUB_OUTPUT
+
+      - name: Post PR comment
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          body: ${{ steps.build_comment.outputs.comment_body }}
