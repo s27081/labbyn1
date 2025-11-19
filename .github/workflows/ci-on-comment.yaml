@@ -16,8 +16,8 @@ jobs:
         id: build_pre_comment
         run: |
           GH_URL=${{ env.GH_URL }}
-          COMMENT="## 🤖 Tests triggered - ($GH_URL):\n\n"
-          
+          COMMENT="## 🤖 Tests triggered:\n\n"
+          COMMENT+="🔗 Full run: $GH_URL\n\n"
           if [[ "${{ github.event.comment.body }}" =~ "/test api" ]]; then
             COMMENT+="✅ [Run API Tests]\n"
           fi
