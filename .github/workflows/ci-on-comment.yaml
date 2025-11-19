@@ -33,6 +33,14 @@ jobs:
           if [[ "${{ github.event.comment.body }}" =~ "/test grafana" ]]; then
             COMMENT+="✅ [Run Grafana Tests]\n"
           fi
+          if [[ "${{ github.event.comment.body }}" =~ "/test all" ]]; then
+            COMMENT+="
+            ✅ [Run API Tests]
+            ✅ [Run Frontend Tests]
+            ✅ [Run Prometheus Tests]
+            ✅ [Run Grafana Tests]
+            "
+          fi
 
           echo "comment_body<<EOF" >> $GITHUB_OUTPUT
           echo -e "$COMMENT" >> $GITHUB_OUTPUT
