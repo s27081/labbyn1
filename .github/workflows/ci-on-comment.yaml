@@ -18,27 +18,29 @@ jobs:
           GH_URL=${{ env.GH_URL }}
           COMMENT="## 🤖 Tests triggered:\n\n"
           COMMENT+="🔗 Full run: $GH_URL\n\n"
+          
           if [[ "${{ github.event.comment.body }}" =~ "/test api" ]]; then
-            COMMENT+="✅ [Run API Tests]\n"
+            COMMENT+="✔️ [Run API Tests]\n"
           fi
 
           if [[ "${{ github.event.comment.body }}" =~ "/test frontend" ]]; then
-            COMMENT+="✅ [Run Frontend Tests]\n"
+            COMMENT+="✔️ [Run Frontend Tests]\n"
           fi
 
           if [[ "${{ github.event.comment.body }}" =~ "/test prometheus" ]]; then
-            COMMENT+="✅ [Run Prometheus Tests]\n"
+            COMMENT+="✔️ [Run Prometheus Tests]\n"
           fi
 
           if [[ "${{ github.event.comment.body }}" =~ "/test grafana" ]]; then
-            COMMENT+="✅ [Run Grafana Tests]\n"
+            COMMENT+="✔️ [Run Grafana Tests]\n"
           fi
+
           if [[ "${{ github.event.comment.body }}" =~ "/test all" ]]; then
             COMMENT+="
-            ✅ [Run API Tests]
-            ✅ [Run Frontend Tests]
-            ✅ [Run Prometheus Tests]
-            ✅ [Run Grafana Tests]
+            ✔️ [Run API Tests]
+            ✔️ [Run Frontend Tests]
+            ✔️ [Run Prometheus Tests]
+            ✔️ [Run Grafana Tests]
             "
           fi
 
@@ -90,13 +92,13 @@ jobs:
             JOB_NAME="$1"
             JOB_RESULT="$2"
             if [ "$JOB_RESULT" = "success" ]; then
-              echo "✔️ $JOB_NAME – passed"
+              echo "✅ $JOB_NAME - passed"
             elif [ "$JOB_RESULT" = "failure" ]; then
-              echo "❌ $JOB_NAME – failed"
+              echo "❌ $JOB_NAME - failed"
             elif [ "$JOB_RESULT" = "skipped" ]; then
-              echo "⏭️ $JOB_NAME – skipped"
+              echo "⏭️ $JOB_NAME - skipped"
             else
-              echo "⚠️ $JOB_NAME – unknown"
+              echo "⚠️ $JOB_NAME - unknown"
             fi
           }
 
