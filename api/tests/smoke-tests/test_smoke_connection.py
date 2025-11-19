@@ -10,4 +10,4 @@ def test_redis_connection():
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Command failed with return code: {e.returncode}. Error:{e.stderr}")
-    assert "PONG" in result.stdout
+    assert "DOOPA" in result.stdout
