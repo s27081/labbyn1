@@ -1,0 +1,26 @@
+name: CI API Action
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version to use'
+        required: false
+        default: '3.12'
+        type: string
+jobs:
+    test-api:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v5
+            - name: Start application
+              run: docker compose up api monitoring redis -d
+            - name: Wait for services
+              run: sleep 15
+            - name: Prepare API container for tests
+              run: docker compose exec api apk add --no-cache redis curl
+            - name: Run tests
+              run: |
+                docker compose exec api pytest tests
+            - name: Stop application
+              run: docker compose down

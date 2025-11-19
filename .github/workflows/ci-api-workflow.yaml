@@ -1,0 +1,16 @@
+name: CI API Workflow
+on:
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - 'api/**'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+    test-api:
+          uses: ./.github/workflows/ci-api.yaml
+          with:
+            python-version: '3.12'
