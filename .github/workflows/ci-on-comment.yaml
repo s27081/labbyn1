@@ -26,7 +26,7 @@ jobs:
       - run-frontend-test-set
       - run-prometheus-test-set
       - run-grafana-test-set
-    if: github.event.issue.pull_request && always()
+    if: github.event.issue.pull_request
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -34,22 +34,23 @@ jobs:
       - name: Build dynamic PR comment
         id: build_comment
         run: |
-          COMMENT="🤖 Tests triggered:\n"
+          GH_URL=https://github.com/s27081/labbyn1/actions/${{ github.run_id }}
+          COMMENT="## 🤖 Tests triggered:\n"
           
           if [[ "${{ needs.run-api-test-set.result }}" != "skipped" ]]; then
-            COMMENT+="✅ [Run API Tests](${{ needs.run-api-test-set.html_url }})\n"
+            COMMENT+="✅ [Run API Tests]($GH_URL)"
           fi
 
           if [[ "${{ needs.run-frontend-test-set.result }}" != "skipped" ]]; then
-            COMMENT+="✅ [Run Frontend Tests](${{ needs.run-frontend-test-set.html_url }})\n"
+            COMMENT+="✅ [Run Frontend Tests]($GH_URL)"
           fi
 
           if [[ "${{ needs.run-prometheus-test-set.result }}" != "skipped" ]]; then
-            COMMENT+="✅ [Run Prometheus Tests](${{ needs.run-prometheus-test-set.html_url }})\n"
+            COMMENT+="✅ [Run Prometheus Tests]($GH_URL)"
           fi
 
           if [[ "${{ needs.run-grafana-test-set.result }}" != "skipped" ]]; then
-            COMMENT+="✅ [Run Grafana Tests](${{ needs.run-grafana-test-set.html_url }})\n"
+            COMMENT+="✅ [Run Grafana Tests]($GH_URL)"
           fi
 
           echo "comment_body=$COMMENT" >> $GITHUB_OUTPUT
