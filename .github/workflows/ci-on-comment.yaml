@@ -26,7 +26,7 @@ jobs:
       - run-frontend-test-set
       - run-prometheus-test-set
       - run-grafana-test-set
-    if: github.event.issue.pull_request
+    if: github.event.issue.pull_request && always()
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
