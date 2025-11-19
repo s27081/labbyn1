@@ -2,7 +2,9 @@ name: Run Workflow on PR Comment
 on:
   issue_comment:
     types: [created]
-  
+env:
+    GH_URL: https://github.com/s27081/labbyn1/actions/runs/${{ github.run_id }}
+
 jobs:
   pre-comment:
     if: github.event.issue.pull_request
@@ -13,26 +15,28 @@ jobs:
       - name: Build dynamic PR comment
         id: build_pre_comment
         run: |
-          GH_URL=https://github.com/s27081/labbyn1/actions/${{ github.run_id }}
-          COMMENT="## 🤖 Tests triggered - ($GH_URL):"
+          GH_URL=${{ env.GH_URL }}
+          COMMENT="## 🤖 Tests triggered - ($GH_URL):\n\n"
           
           if [[ "${{ github.event.comment.body }}" =~ "/test api" ]]; then
-            COMMENT+="✅ [Run API Tests]"
+            COMMENT+="✅ [Run API Tests]\n"
           fi
 
           if [[ "${{ github.event.comment.body }}" =~ "/test frontend" ]]; then
-            COMMENT+="✅ [Run Frontend Tests]"
+            COMMENT+="✅ [Run Frontend Tests]\n"
           fi
 
           if [[ "${{ github.event.comment.body }}" =~ "/test prometheus" ]]; then
-            COMMENT+="✅ [Run Prometheus Tests]"
+            COMMENT+="✅ [Run Prometheus Tests]\n"
           fi
 
           if [[ "${{ github.event.comment.body }}" =~ "/test grafana" ]]; then
-            COMMENT+="✅ [Run Grafana Tests]"
+            COMMENT+="✅ [Run Grafana Tests]\n"
           fi
 
-          echo "comment_body=$COMMENT" >> $GITHUB_OUTPUT
+          echo "comment_body<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$COMMENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       - name: Post PR comment
         uses: peter-evans/create-or-update-comment@v5
         with:
@@ -70,9 +74,9 @@ jobs:
       - name: Build results comment
         id: build_post_comment
         run: |
-          RUN_URL="https://github.com/s27081/labbyn1/actions/${{ github.run_id }}"
+          GH_URL=${{ env.GH_URL }}
           COMMENT="## 🤖 Test results\n\n"
-          COMMENT+="🔗 Full run: $RUN_URL\n\n"
+          COMMENT+="🔗 Full run: $GH_URL\n\n"
 
           format_line () {
             JOB_NAME="$1"
