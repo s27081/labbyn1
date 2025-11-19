@@ -4,6 +4,42 @@ on:
     types: [created]
   
 jobs:
+  pre-comment:
+    if: github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Build dynamic PR comment
+        id: build_comment
+        run: |
+          GH_URL=https://github.com/Labbyn/labbyn/actions/${{ github.run_id }}
+          COMMENT="## 🤖 Tests triggered - ($GH_URL):"
+          
+          if [[ "${{ github.event.comment.body }}" =~ "/test api" ]]; then
+            COMMENT+="✅ [Run API Tests]"
+          fi
+
+          if [[ "${{ github.event.comment.body }}" =~ "/test frontend" ]]; then
+            COMMENT+="✅ [Run Frontend Tests]"
+          fi
+
+          if [[ "${{ github.event.comment.body }}" =~ "/test prometheus" ]]; then
+            COMMENT+="✅ [Run Prometheus Tests]"
+          fi
+
+          if [[ "${{ github.event.comment.body }}" =~ "/test grafana" ]]; then
+            COMMENT+="✅ [Run Grafana Tests]"
+          fi
+
+          echo "comment_body=$COMMENT" >> $GITHUB_OUTPUT
+      - name: Post PR comment
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          body: ${{ steps.build_comment.outputs.comment_body }}
+
   run-api-test-set:
     if: github.event.issue.pull_request && (contains(github.event.comment.body, '/test all') || contains(github.event.comment.body, '/test api'))
     uses: ./.github/workflows/ci-api.yaml
@@ -20,44 +56,3 @@ jobs:
     uses: ./.github/workflows/ci-monitoring.yaml
     with:
         monitoring-tool: 'grafana'
-  post-comment:
-    needs:
-      - run-api-test-set
-      - run-frontend-test-set
-      - run-prometheus-test-set
-      - run-grafana-test-set
-    if: github.event.issue.pull_request
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Build dynamic PR comment
-        id: build_comment
-        run: |
-          GH_URL=https://github.com/s27081/labbyn1/actions/${{ github.run_id }}
-          COMMENT="## 🤖 Tests triggered:\n"
-          
-          if [[ "${{ needs.run-api-test-set.result }}" != "skipped" ]]; then
-            COMMENT+="✅ [Run API Tests]($GH_URL)"
-          fi
-
-          if [[ "${{ needs.run-frontend-test-set.result }}" != "skipped" ]]; then
-            COMMENT+="✅ [Run Frontend Tests]($GH_URL)"
-          fi
-
-          if [[ "${{ needs.run-prometheus-test-set.result }}" != "skipped" ]]; then
-            COMMENT+="✅ [Run Prometheus Tests]($GH_URL)"
-          fi
-
-          if [[ "${{ needs.run-grafana-test-set.result }}" != "skipped" ]]; then
-            COMMENT+="✅ [Run Grafana Tests]($GH_URL)"
-          fi
-
-          echo "comment_body=$COMMENT" >> $GITHUB_OUTPUT
-
-      - name: Post PR comment
-        uses: peter-evans/create-or-update-comment@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ github.event.issue.number }}
-          body: ${{ steps.build_comment.outputs.comment_body }}
