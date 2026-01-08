@@ -3,7 +3,11 @@ on:
   issue_comment:
     types: [created]
 env:
+<<<<<<< HEAD
     GH_URL: https://github.com/s27081/labbyn1/actions/runs/${{ github.run_id }}
+=======
+    GH_URL: https://github.com/Labbyn/labbyn/actions/runs/${{ github.run_id }}
+>>>>>>> f3ea5db54a38e8c57b791b36672586c646baa469
 
 jobs:
   pre-comment:
@@ -85,7 +89,11 @@ jobs:
         id: build_post_comment
         run: |
           GH_URL=${{ env.GH_URL }}
+<<<<<<< HEAD
           COMMENT="## 🤖 Test results\n\n"
+=======
+          COMMENT="## 🤖 Tests results\n\n"
+>>>>>>> f3ea5db54a38e8c57b791b36672586c646baa469
           COMMENT+="🔗 Full run: $GH_URL\n\n"
 
           format_line () {
