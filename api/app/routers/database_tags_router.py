@@ -4,12 +4,7 @@ from typing import List
 
 from app.database import get_db
 from app.db.models import Tags, Machines, Rack, Rooms, Documentation
-from app.db.schemas import (
-    TagsCreate,
-    TagsUpdate,
-    TagsResponse,
-    TagsAssignment
-)
+from app.db.schemas import TagsCreate, TagsUpdate, TagsResponse, TagsAssignment
 from app.utils.redis_service import acquire_lock
 from app.auth.dependencies import RequestContext
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -41,11 +36,10 @@ def get_tags(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
     query = db.query(Tags).all()
     return query
 
+
 @router.post("/db/tags/assign", status_code=status.HTTP_200_OK, tags=["Tags"])
 async def assign_tag(
-        data: TagsAssignment,
-        db: Session = Depends(get_db),
-        ctx: RequestContext = Depends()
+    data: TagsAssignment, db: Session = Depends(get_db), ctx: RequestContext = Depends()
 ):
     ctx.require_user()
 
@@ -62,8 +56,7 @@ async def assign_tag(
 
     if not entity:
         raise HTTPException(
-            status_code=404,
-            detail=f"{data.entity_type} not found or access denied"
+            status_code=404, detail=f"{data.entity_type} not found or access denied"
         )
 
     tag = db.query(Tags).filter(Tags.id == data.tag_id).first()
@@ -79,9 +72,7 @@ async def assign_tag(
 
 @router.post("/db/tags/detach", status_code=status.HTTP_200_OK, tags=["Tags"])
 async def detach_tag(
-        data: TagsAssignment,
-        db: Session = Depends(get_db),
-        ctx: RequestContext = Depends()
+    data: TagsAssignment, db: Session = Depends(get_db), ctx: RequestContext = Depends()
 ):
     ctx.require_user()
 
@@ -98,6 +89,7 @@ async def detach_tag(
         db.commit()
 
     return {f"Tag {tag.name} detached from {data.entity_type}"}
+
 
 @router.post(
     "/db/tags/",
