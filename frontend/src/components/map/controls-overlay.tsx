@@ -43,7 +43,7 @@ function ControlHint({
           ))}
         </div>
       )}
-      <span className="opacity-70">{text}</span>
+      <span>{text}</span>
     </div>
   )
 }

@@ -55,6 +55,8 @@ export interface Equipment {
   x: number
   y: number
   label: string
+  rotation?: number
+  color?: string
 }
 
 export interface Wall {

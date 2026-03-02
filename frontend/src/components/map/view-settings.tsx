@@ -47,7 +47,7 @@ export function ViewSettings({
   is2D,
   setIs2D,
   projection,
-  setProjection
+  setProjection,
 }: ViewSettingsProps) {
   return (
     <TooltipProvider delayDuration={0}>
@@ -81,11 +81,13 @@ export function ViewSettings({
         </ToggleGroup>
 
         {/* Camera Projection Group */}
-        <ToggleGroup 
-          type="single" 
+        <ToggleGroup
+          type="single"
           variant={'outline'}
           value={projection}
-          onValueChange={(v) => v && setProjection(v as 'perspective' | 'orthographic')}
+          onValueChange={(v) =>
+            v && setProjection(v as 'perspective' | 'orthographic')
+          }
         >
           <Tooltip>
             <TooltipTrigger asChild>
