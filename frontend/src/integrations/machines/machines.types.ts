@@ -85,18 +85,18 @@ export interface PlatformFormValues {
   login?: string
   password?: string
   name?: string
-  ip?: string
-  mac?: string
-  location?: number
-  team?: number
+  ip_address?: string
+  mac_address?: string
+  localization_id?: number
+  team_id?: number
   pdu_port?: number
   os?: string
-  sn?: string
+  serial_number?: string
   note?: string
-  cpu?: Array<CPU>
+  cpus?: Array<CPU>
   ram?: string
-  disk?: Array<Disk>
-  layout?: number
+  disks?: Array<Disk>
+  shelf_id?: number
 }
 
 export interface MachineUpdate {
@@ -110,7 +110,7 @@ export interface MachineUpdate {
   serial_number?: string | null
   note?: string | null
   cpu?: Array<CPU> | null
-  ram?: string | null
+  ram?: number | null
   disk?: Array<Disk> | null
   layout_id?: number | null
   metadata_id?: number | null

@@ -46,12 +46,12 @@ export const handlePlatformSubmission = async (values: PlatformFormValues) => {
           pdu_port: values.pdu_port || null,
           team_id: values.team || null,
           os: values.os || null,
-          serial_number: values.sn || null,
+          serial_number: values.serial_number || null,
           note: values.note || null,
           cpus: values.cpu || [],
           ram: values.ram || null,
           disks: values.disk || [],
-          shelf_id: values.layout || null,
+          shelf_id: values.shelf_id || null,
         },
       )
       results.push(machine)
