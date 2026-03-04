@@ -25,7 +25,7 @@ export function useAttachTagMutation() {
     mutationFn: (tagData: AssignDetachTagForm) =>
       api.post(PATHS.ASSIGN, tagData),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['machines', 'spec', 'info'] })
+      queryClient.invalidateQueries({ queryKey: ['machines'] })
     },
   })
 }
@@ -38,7 +38,7 @@ export function useDetachTagMutation() {
     mutationFn: (tagData: AssignDetachTagForm) =>
       api.post(PATHS.DETACH, tagData),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['machines', 'spec', 'info'] })
+      queryClient.invalidateQueries({ queryKey: ['machines'] })
     },
   })
 }

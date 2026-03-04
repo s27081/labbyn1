@@ -245,23 +245,60 @@ async def update_machine(
                     detail="You don't have permission to assign this machine to the specified team",
                 )
 
-        for k, v in update_data.items():
-            if k == "cpus":
-                for cpu in v:
+        if "cpus" in update_data:
+            updated_cpus = update_data.pop("cpus")
+
+            updated_cpus_ids = [
+                cpu["id"] for cpu in updated_cpus if cpu.get("id", 0) != 0
+            ]
+
+            delete_query = db.query(CPUs).filter(CPUs.machine_id == machine_id)
+
+            if updated_cpus_ids:
+                delete_query = delete_query.filter(CPUs.id.not_in(updated_cpus_ids))
+            delete_query.delete()
+
+            for cpu in updated_cpus:
+                if cpu.get("id", 0) == 0:
+                    db.add(CPUs(name=cpu["name"], machine_id=machine_id))
+                else:
                     db.query(CPUs).filter(CPUs.id == cpu["id"]).update(
                         {"name": cpu["name"]}
                     )
-                db.commit()
-            elif k == "disks":
-                for disk in v:
+
+        if "disks" in update_data:
+            updated_disks = update_data.pop("disks")
+
+            updated_disks_ids = [
+                disk["id"] for disk in updated_disks if disk.get("id", 0) != 0
+            ]
+
+            delete_query = db.query(Disks).filter(Disks.machine_id == machine_id)
+
+            if updated_disks_ids:
+                delete_query = delete_query.filter(Disks.id.not_in(updated_disks_ids))
+
+            delete_query.delete(synchronize_session=False)
+
+            for disk in updated_disks:
+                if disk.get("id", 0) == 0:
+                    db.add(
+                        Disks(
+                            name=disk["name"],
+                            capacity=disk["capacity"],
+                            machine_id=machine_id,
+                        )
+                    )
+                else:
                     db.query(Disks).filter(Disks.id == disk["id"]).update(
                         {"name": disk["name"], "capacity": disk["capacity"]}
                     )
-                db.commit()
-            else:
-                setattr(machine, k, v)
+
+        for k, v in update_data.items():
+            setattr(machine, k, v)
 
         db.commit()
+
         db.refresh(machine)
         return machine
 

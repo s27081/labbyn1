@@ -98,16 +98,10 @@ export const useUpdateMachineMutation = (machineId: string | number) => {
 
   return useMutation({
     mutationKey: ['update-machine'],
-    mutationFn: async (machineData: MachineUpdate) => {
-      const { data } = await api.patch(PATHS.DETAIL(machineId), machineData)
-      return data
-    },
+    mutationFn: (machineData: MachineUpdate) =>
+      api.patch(PATHS.DETAIL(machineId), machineData),
     onSuccess: () => {
-      toast.success('Machine updated successfully')
       queryClient.invalidateQueries({ queryKey: ['machines'] })
-      queryClient.invalidateQueries({
-        queryKey: ['machines', String(machineId)],
-      })
     },
   })
 }

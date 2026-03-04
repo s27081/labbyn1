@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useSuspenseQuery } from '@tanstack/react-query'
+import { useForm, useStore } from '@tanstack/react-form'
 import {
   AlarmClock,
   ArrowDownUp,
@@ -18,11 +19,15 @@ import {
   MemoryStick,
   MonitorCog,
   Network,
+  Plus,
   Save,
   StickyNote,
+  Trash2,
   Users,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { TagItem } from '@/integrations/tags/tags.types'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -30,7 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-// import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { machineSpecInfoQueryOptions } from '@/integrations/machines/machines.query'
 import { TextField } from '@/components/text-field'
@@ -52,10 +56,10 @@ function MachineDetailsPage() {
     machineSpecInfoQueryOptions(machineId),
   )
   const { data: teams } = useSuspenseQuery(teamsQueryOptions)
+
   const updateMachine = useUpdateMachineMutation(machineId)
 
   const [isEditing, setIsEditing] = useState(false)
-  const [formData, setFormData] = useState({ ...machine })
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -77,12 +81,17 @@ function MachineDetailsPage() {
     })
   }
 
-  const handleSave = () => {
-    updateMachine.mutate(formData, {
-      onSuccess: () => setIsEditing(false),
-    })
-    setIsEditing(false)
-  }
+  const form = useForm({
+    defaultValues: { ...machine },
+    onSubmit: ({ value }) => {
+      updateMachine.mutate(value, {
+        onSuccess: () => {
+          toast.success('Machine updated successfully')
+          setIsEditing(false)
+        },
+      })
+    },
+  })
 
   return (
     <SubPageTemplate
@@ -90,11 +99,14 @@ function MachineDetailsPage() {
         title: machine.name,
         type: 'editable',
         isEditing: isEditing,
-        editValue: formData.name,
-        onEditChange: (val) => setFormData((prev) => ({ ...prev, name: val })),
-        onSave: () => handleSave(),
+        editValue: form.state.values.name,
+        onEditChange: (val) => form.setFieldValue('name', val),
+        onSave: (e) => {
+          e.preventDefault()
+          form.handleSubmit()
+        },
         onCancel: () => {
-          setFormData({ ...machine })
+          form.reset()
           setIsEditing(false)
         },
         onStartEdit: () => setIsEditing(true),
@@ -169,125 +181,226 @@ function MachineDetailsPage() {
                   },
                   { label: 'Tags', name: 'tags' as const, icon: Box },
                   { label: 'Team', name: 'team_id' as const, icon: Users },
-                ].map((field, index, array) => {
-                  const rawValue = machine[field.name]
+                ].map((formFiled, idx, array) => {
+                  const rawValue = machine[formFiled.name]
 
                   return (
                     <div
-                      key={field.name}
+                      key={formFiled.name}
                       className={`flex flex-col gap-1.5 py-3 ${
-                        index !== array.length - 1
+                        idx !== array.length - 1
                           ? 'border-b border-border/50'
                           : ''
                       }`}
                     >
                       <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-tight text-muted-foreground/80">
-                        <field.icon className="h-3.5 w-3.5" />
-                        {field.label}
+                        <formFiled.icon className="h-3.5 w-3.5" />
+                        {formFiled.label}
                       </div>
                       <div className="flex flex-col gap-2 min-h-8 justify-center">
                         {isEditing ? (
                           <>
-                            {field.name === 'tags' ? (
+                            {formFiled.name === 'tags' ? (
                               <TagList
                                 tags={rawValue as Array<TagItem>}
                                 type="edit"
                                 entityType="machine"
                                 entityId={machineId}
                               />
-                            ) : field.name === 'team_id' ? (
-                              <Select
-                                value={String(formData.team_id)}
-                                onValueChange={(newTeamId: string) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    team_id: newTeamId,
-                                  }))
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select a team" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {teams.map((team) => (
-                                    <SelectItem
-                                      key={team.id}
-                                      value={String(team.id)}
-                                    >
-                                      {team.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : field.name === 'cpus' ? (
-                              formData.cpus.map((cpu: any, idx: number) => (
-                                <Input
-                                  key={cpu.id || idx}
-                                  value={cpu.name}
-                                  onChange={(e) =>
-                                    handleListInputChange(
-                                      'cpus',
-                                      idx,
-                                      'name',
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="h-8 text-sm"
-                                  placeholder="CPU Name"
-                                />
-                              ))
-                            ) : field.name === 'disks' ? (
-                              formData.disks.map((disk: any, idx: number) => (
-                                <div
-                                  key={disk.id || idx}
-                                  className="flex gap-2 items-center"
-                                >
-                                  <Input
-                                    value={disk.name}
-                                    onChange={(e) =>
-                                      handleListInputChange(
-                                        'disks',
-                                        idx,
-                                        'name',
-                                        e.target.value,
-                                      )
+                            ) : formFiled.name === 'team_id' ? (
+                              <form.Field
+                                name="team_id"
+                                children={(field) => (
+                                  <Select
+                                    value={String(field.state.value)}
+                                    onValueChange={(newTeamId: string) =>
+                                      field.handleChange(Number(newTeamId))
                                     }
-                                    className="h-8 text-sm flex-1"
-                                    placeholder="Disk Name"
-                                  />
-                                  <Input
-                                    value={disk.capacity}
-                                    type="number"
-                                    onChange={(e) =>
-                                      handleListInputChange(
-                                        'disks',
-                                        idx,
-                                        'capacity',
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="h-8 text-sm flex-1"
-                                    placeholder="Disk Capacity"
-                                  />
-                                </div>
-                              ))
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select a team" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {teams.map((team) => (
+                                        <SelectItem
+                                          key={team.id}
+                                          value={String(team.id)}
+                                        >
+                                          {team.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                )}
+                              />
+                            ) : formFiled.name === 'cpus' ? (
+                              <form.Field
+                                name="cpus"
+                                children={(field) => {
+                                  const cpus = field.state.value
+                                  return (
+                                    <div className="space-y-2">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-fit"
+                                        onClick={() =>
+                                          field.handleChange([
+                                            ...cpus,
+                                            {
+                                              id: 0,
+                                              machine_id: Number(machineId),
+                                              name: '',
+                                            },
+                                          ])
+                                        }
+                                      >
+                                        <Plus className="h-4 w-4 mr-2" /> Add
+                                        CPU
+                                      </Button>
+                                      {cpus.map((cpu, index) => (
+                                        <div
+                                          key={cpu.id || index}
+                                          className="flex gap-2 items-center"
+                                        >
+                                          <Input
+                                            value={cpu.name || ''}
+                                            onChange={(e) => {
+                                              const newCpus = [...cpus]
+                                              newCpus[index] = {
+                                                ...newCpus[index],
+                                                name: e.target.value,
+                                              }
+                                              field.handleChange(newCpus)
+                                            }}
+                                            className="h-8 text-sm flex-1"
+                                            placeholder="CPU Name"
+                                          />
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() =>
+                                              field.handleChange(
+                                                cpus.filter(
+                                                  (_: any, i: number) =>
+                                                    i !== index,
+                                                ),
+                                              )
+                                            }
+                                          >
+                                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                }}
+                              />
+                            ) : formFiled.name === 'disks' ? (
+                              <form.Field
+                                name="disks"
+                                children={(field) => {
+                                  const disks = field.state.value
+                                  return (
+                                    <div className="space-y-2">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-fit"
+                                        onClick={() =>
+                                          field.handleChange([
+                                            ...disks,
+                                            {
+                                              id: 0,
+                                              machine_id: Number(machineId),
+                                              name: '',
+                                              capacity: '',
+                                            },
+                                          ])
+                                        }
+                                      >
+                                        <Plus className="h-4 w-4 mr-2" /> Add
+                                        Disk
+                                      </Button>
+                                      {disks.map((disk: any, index: number) => (
+                                        <div
+                                          key={disk.id || index}
+                                          className="flex gap-2 items-center"
+                                        >
+                                          <Input
+                                            value={disk.name || ''}
+                                            onChange={(e) => {
+                                              const newDisks = [...disks]
+                                              newDisks[index] = {
+                                                ...newDisks[index],
+                                                name: e.target.value,
+                                              }
+                                              field.handleChange(newDisks)
+                                            }}
+                                            className="h-8 text-sm flex-1"
+                                            placeholder="Disk Name"
+                                          />
+                                          <Input
+                                            value={disk.capacity}
+                                            type="number"
+                                            onChange={(e) => {
+                                              const newDisks = [...disks]
+                                              newDisks[index] = {
+                                                ...newDisks[index],
+                                                capacity: e.target.value,
+                                              }
+                                              field.handleChange(newDisks)
+                                            }}
+                                            className="h-8 text-sm flex-1"
+                                            placeholder="Capacity"
+                                          />
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() =>
+                                              field.handleChange(
+                                                disks.filter(
+                                                  (_: any, i: number) =>
+                                                    i !== index,
+                                                ),
+                                              )
+                                            }
+                                          >
+                                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                }}
+                              />
                             ) : (
-                              <Input
-                                name={field.name}
-                                value={(formData as any)[field.name]}
-                                onChange={handleInputChange}
-                                className="h-8 text-sm rounded-md border-input bg-background"
+                              <form.Field
+                                name={formFiled.name as any}
+                                children={(field) => (
+                                  <Input
+                                    value={String(field.state.value)}
+                                    onChange={(e) =>
+                                      field.handleChange(e.target.value as any)
+                                    }
+                                    className="h-8 text-sm rounded-md border-input bg-background"
+                                  />
+                                )}
                               />
                             )}
                           </>
                         ) : (
                           <div className="text-sm font-medium text-foreground flex flex-col gap-1">
-                            {field.name === 'cpus' &&
+                            {formFiled.name === 'cpus' &&
                             Array.isArray(rawValue) ? (
                               rawValue.map((cpu: any) => (
                                 <div key={cpu.id}>{cpu.name}</div>
                               ))
-                            ) : field.name === 'disks' &&
+                            ) : formFiled.name === 'disks' &&
                               Array.isArray(rawValue) ? (
                               rawValue.map((disk: any) => (
                                 <div
@@ -300,14 +413,14 @@ function MachineDetailsPage() {
                                   </span>
                                 </div>
                               ))
-                            ) : field.name === 'tags' ? (
+                            ) : formFiled.name === 'tags' ? (
                               <TagList tags={rawValue as Array<TagItem>} />
-                            ) : field.name === 'added_on' ? (
+                            ) : formFiled.name === 'added_on' ? (
                               <span className="truncate">
                                 {convertTimestampToDate(rawValue as string) ||
                                   '—'}
                               </span>
-                            ) : field.name === 'team_id' ? (
+                            ) : formFiled.name === 'team_id' ? (
                               <span className="truncate">
                                 {teams.find((team) => team.id === rawValue)
                                   ?.name || '—'}
@@ -375,10 +488,15 @@ function MachineDetailsPage() {
             content={
               <>
                 {isEditing ? (
-                  <TextField
-                    value={formData.note ?? ''}
-                    onChange={handleInputChange}
-                    maxChars={500}
+                  <form.Field
+                    name="note"
+                    children={(field) => (
+                      <TextField
+                        value={field.state.value || ''}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        maxChars={500}
+                      />
+                    )}
                   />
                 ) : (
                   <div className="text-sm leading-relaxed">
