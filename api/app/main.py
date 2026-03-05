@@ -36,12 +36,14 @@ from app.database import SessionLocal
 from app.utils.database_service import init_super_user, init_virtual_lab, init_document
 
 # pylint: disable=unused-import
-import app.db.listeners
+#import app.db.listeners
 
 from app.auth.auth_config import auth_backend
 from app.db.schemas import UserRead
 from app.db.schemas import UserUpdate
 from app.auth.auth_config import fastapi_users
+
+from app.database import AsyncSessionLocal
 
 
 @asynccontextmanager
@@ -52,11 +54,11 @@ async def lifespan(fast_api_app: FastAPI):  # pylint: disable=unused-argument
     :param app: FastAPI application instance
     :return: None
     """
-    db = SessionLocal()
+    db = AsyncSessionLocal()
     try:
-        init_super_user(db)
-        init_virtual_lab(db)
-        init_document(db)
+        await init_super_user(db)
+        await init_virtual_lab(db)
+        await init_document(db)
     finally:
         db.close()
     status_task = asyncio.create_task(status_worker())
@@ -64,6 +66,7 @@ async def lifespan(fast_api_app: FastAPI):  # pylint: disable=unused-argument
     try:
         yield
     finally:
+        await db.close()
         status_task.cancel()
         metrics_task.cancel()
         await asyncio.gather(status_task, metrics_task, return_exceptions=True)
