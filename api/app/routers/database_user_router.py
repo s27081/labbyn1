@@ -5,7 +5,11 @@ import shutil
 import glob
 from typing import List, Union
 
-from app.database import get_db
+from sqlalchemy import select, or_, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+
+from app.database import get_async_db
 from app.db.models import User, UserType, UsersTeams
 from app.db.schemas import (
     UserCreate,
@@ -17,9 +21,7 @@ from app.db.schemas import (
 )
 from app.utils.redis_service import acquire_lock
 from app.utils.security import hash_password, generate_starting_password
-from app.db.schemas import UserRead
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from sqlalchemy.orm import Session, joinedload
 from app.auth.dependencies import RequestContext
 
 
@@ -79,7 +81,7 @@ def get_masked_user_model(u: User, ctx: RequestContext, detailed: bool = False):
 )
 async def create_user(
     user_data: UserCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(),
 ):
     """
@@ -91,11 +93,9 @@ async def create_user(
 
     ctx.require_group_admin()
 
-    if (
-        db.query(User)
-        .filter((User.login == user_data.login) | (User.email == user_data.email))
-        .first()
-    ):
+    stmt = select(User).where(or_(User.login == user_data.login, User.email == user_data.email))
+    result = await db.execute(stmt)
+    if result.scalar_one_or_none():
         raise HTTPException(409, detail="User already exists.")
 
     if not ctx.is_admin and user_data.user_type == UserType.ADMIN:
@@ -116,7 +116,7 @@ async def create_user(
 
     try:
         db.add(new_user)
-        db.flush()
+        await db.flush()
 
         if ctx.is_admin:
             target_teams = user_data.team_ids or []
@@ -135,9 +135,14 @@ async def create_user(
                 )
             )
 
-        db.commit()
-        db.refresh(new_user)
-        db.expire_all()
+        await db.commit()
+
+        stmt_refresh = select(User).options(
+            joinedload(User.teams).joinedload(UsersTeams.team)
+        ).where(User.id == new_user.id)
+        res_refresh = await db.execute(stmt_refresh)
+        new_user = res_refresh.unique().scalar_one()
+
         res = get_masked_user_model(new_user, ctx, detailed=True)
         return {
             **res.model_dump(),
@@ -146,13 +151,13 @@ async def create_user(
         }
 
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(500, detail=f"User creation error: {str(e)}")
 
 
 @router.get("/db/users/list_info", response_model=List[UserInfo], tags=["Users"])
-def get_users_with_groups(
-    db: Session = Depends(get_db), ctx: RequestContext = Depends()
+async def get_users_with_groups(
+    db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends()
 ):
     """
     Fetch all users with their assigned groups (masked based on permissions).
@@ -161,15 +166,15 @@ def get_users_with_groups(
     :return: User object
     """
     ctx.require_user()
-    users = (
-        db.query(User).options(joinedload(User.teams).joinedload(UsersTeams.team)).all()
-    )
+    stmt = select(User).options(joinedload(User.teams).joinedload(UsersTeams.team))
+    result = await db.execute(stmt)
+    users = result.unique().scalars().all()
     return [get_masked_user_model(u, ctx, detailed=False) for u in users]
 
 
 @router.get("/db/users/{user_id}", response_model=UserInfoExtended, tags=["Users"])
-def get_user_detail_with_groups(
-    user_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+async def get_user_detail_with_groups(
+    user_id: int, db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends()
 ):
     """
     Fetch full user profile including avatar and group links (requires permissions).
@@ -179,12 +184,12 @@ def get_user_detail_with_groups(
     :return: User object with extended info
     """
     ctx.require_user()
-    user = (
-        db.query(User)
-        .options(joinedload(User.teams).joinedload(UsersTeams.team))
-        .filter(User.id == user_id)
-        .first()
-    )
+    stmt = select(User).options(
+        joinedload(User.teams).joinedload(UsersTeams.team)
+    ).where(User.id == user_id)
+
+    result = await db.execute(stmt)
+    user = result.unique().scalar_one_or_none()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -204,7 +209,7 @@ def get_user_detail_with_groups(
 async def update_user(
     user_id: int,
     user_data: UserUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(),
 ):
     """
@@ -216,12 +221,10 @@ async def update_user(
     """
     ctx.require_group_admin()
     async with acquire_lock(f"user_lock:{user_id}"):
-        user = (
-            db.query(User)
-            .options(joinedload(User.teams))
-            .filter(User.id == user_id)
-            .first()
-        )
+        stmt = select(User).options(joinedload(User.teams)).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.unique().scalar_one_or_none()
+
         if not user:
             raise HTTPException(404, detail="User not found")
 
@@ -244,7 +247,7 @@ async def update_user(
 
         if "team_ids" in data and ctx.is_admin:
             new_teams = data.pop("team_ids")
-            db.query(UsersTeams).filter(UsersTeams.user_id == user.id).delete()
+            await db.execute(delete(UsersTeams).where(UsersTeams.user_id == user.id))
             for t_id in new_teams:
                 db.add(UsersTeams(user_id=user.id, team_id=t_id))
 
@@ -252,18 +255,17 @@ async def update_user(
             if hasattr(user, k):
                 setattr(user, k, v)
         try:
-            db.commit()
-            db.refresh(user)
-            user = (
-                db.query(User)
-                .options(joinedload(User.teams).joinedload(UsersTeams.team))
-                .filter(User.id == user.id)
-                .first()
-            )
+            await db.commit()
+
+            stmt_final = select(User).options(
+                joinedload(User.teams).joinedload(UsersTeams.team)
+            ).where(User.id == user_id)
+            res_final = await db.execute(stmt_final)
+            user = res_final.unique().scalar_one()
 
             return get_masked_user_model(user, ctx, detailed=True)
         except Exception as e:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(status_code=500, detail=f"User update error: {str(e)}")
 
 
@@ -271,7 +273,7 @@ async def update_user(
     "/db/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"]
 )
 async def delete_user(
-    user_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    user_id: int, db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends()
 ):
     """
     Delete user
@@ -281,12 +283,10 @@ async def delete_user(
     """
     ctx.require_group_admin()
     async with acquire_lock(f"user_lock:{user_id}"):
-        user = (
-            db.query(User)
-            .options(joinedload(User.teams))
-            .filter(User.id == user_id)
-            .first()
-        )
+        stmt = select(User).options(joinedload(User.teams)).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.unique().scalar_one_or_none()
+
         if not user:
             raise HTTPException(404, detail="User not found")
 
@@ -297,20 +297,20 @@ async def delete_user(
         if user.id == ctx.current_user.id:
             raise HTTPException(400, detail="Cannot delete own account")
 
-        db.delete(user)
-        db.commit()
+        await db.delete(user)
+        await db.commit()
 
 
 @router.post("/db/users/avatar", tags=["Users"])
 async def upload_user_avatar(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(),
 ):
     ctx.require_user()
-    user = ctx.current_user
+    user_id = ctx.current_user.id
 
-    for old_file in glob.glob(os.path.join(AVATAR_DIR, f"avatar_user_{user.id}.*")):
+    for old_file in glob.glob(os.path.join(AVATAR_DIR, f"avatar_user_{user_id}.*")):
         try:
             os.remove(old_file)
         except:
@@ -323,7 +323,7 @@ async def upload_user_avatar(
             detail="Unsupported file type. Allowed types: png, jpg, jpeg, gif.",
         )
 
-    filename = f"avatar_user_{user.id}{ext}"
+    filename = f"avatar_user_{user_id}{ext}"
     full_path = os.path.join(AVATAR_DIR, filename)
 
     try:
@@ -334,8 +334,12 @@ async def upload_user_avatar(
             status_code=500, detail=f"Something went wrong! Try again!: {str(e)}"
         )
 
+    stmt = select(User).where(User.id == user_id)
+    res = await db.execute(stmt)
+    user = res.scalar_one()
+
     user.avatar_path = f"/static/avatars/{filename}"
-    db.commit()
+    await db.commit()
 
     return {"info": "Succesfully updated!", "path": user.avatar_path}
 
@@ -344,7 +348,7 @@ async def upload_user_avatar(
 async def update_user_team_role(
     user_id: int,
     role_data: UserTeamRoleUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(),
 ):
     """
@@ -356,27 +360,24 @@ async def update_user_team_role(
     :return: None
     """
     if not ctx.is_admin:
-        requester_membership = (
-            db.query(UsersTeams)
-            .filter(
-                UsersTeams.user_id == ctx.current_user.id,
-                UsersTeams.team_id == role_data.team_id,
-                UsersTeams.is_group_admin == True,
-            )
-            .first()
+        stmt_req = select(UsersTeams).where(
+            UsersTeams.user_id == ctx.current_user.id,
+            UsersTeams.team_id == role_data.team_id,
+            UsersTeams.is_group_admin == True
         )
-
-        if not requester_membership:
+        res_req = await db.execute(stmt_req)
+        if not res_req.scalar_one_or_none():
             raise HTTPException(
                 status_code=403,
                 detail="You can only change roles for users in teams where you are a group admin.",
             )
 
-    target_membership = (
-        db.query(UsersTeams)
-        .filter(UsersTeams.user_id == user_id, UsersTeams.team_id == role_data.team_id)
-        .first()
+    stmt_target = select(UsersTeams).where(
+        UsersTeams.user_id == user_id,
+        UsersTeams.team_id == role_data.team_id
     )
+    res_target = await db.execute(stmt_target)
+    target_membership = res_target.scalar_one_or_none()
 
     if not target_membership:
         raise HTTPException(
@@ -387,17 +388,16 @@ async def update_user_team_role(
     target_membership.is_group_admin = role_data.is_group_admin
 
     try:
-        db.commit()
-        user = (
-            db.query(User)
-            .options(joinedload(User.teams).joinedload(UsersTeams.team))
-            .filter(User.id == user_id)
-            .first()
-        )
+        await db.commit()
+        stmt_final = select(User).options(
+            joinedload(User.teams).joinedload(UsersTeams.team)
+        ).where(User.id == user_id)
+        res_final = await db.execute(stmt_final)
+        user = res_final.unique().scalar_one()
 
         return get_masked_user_model(user, ctx, detailed=True)
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=500, detail=f"Error while promoting user: {str(e)}"
         )

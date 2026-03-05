@@ -2,7 +2,7 @@
 
 from typing import List
 
-from app.database import get_db
+from app.database import get_async_db
 from app.db.models import Documentation, Tags
 from app.db.schemas import (
     DocumentationCreate,
@@ -12,7 +12,9 @@ from app.db.schemas import (
 from app.utils.redis_service import acquire_lock
 from app.auth.dependencies import RequestContext
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 router = APIRouter()
 
@@ -22,7 +24,10 @@ router = APIRouter()
     response_model=List[DocumentationResponse],
     tags=["Documentation"],
 )
-def get_documentation(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
+async def get_documentation(
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends()
+):
     """
     Get all documents from documentation
     :param db: Active database session
@@ -30,8 +35,9 @@ def get_documentation(db: Session = Depends(get_db), ctx: RequestContext = Depen
     :return: List of all documents
     """
     ctx.require_user()
-    query = db.query(Documentation).options(joinedload(Documentation.tags)).all()
-    return query
+    stmt = select(Documentation).options(joinedload(Documentation.tags))
+    result = await db.execute(stmt)
+    return result.unique().scalars().all()
 
 
 @router.post(
@@ -40,9 +46,9 @@ def get_documentation(db: Session = Depends(get_db), ctx: RequestContext = Depen
     status_code=status.HTTP_201_CREATED,
     tags=["Documentation"],
 )
-def create_documentation(
+async def create_documentation(
     documentation_data: DocumentationCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(),
 ):
     """
@@ -55,14 +61,20 @@ def create_documentation(
     ctx.require_user()
     current_author = ctx.current_user.login
     tag_ids = documentation_data.tag_ids or []
+
     obj = Documentation(
-        **documentation_data.model_dump(exclude={"tag_ids"}), author=current_author
+        **documentation_data.model_dump(exclude={"tag_ids"}),
+        author=current_author
     )
+
     if tag_ids:
-        obj.tags = db.query(Tags).filter(Tags.id.in_(tag_ids)).all()
+        tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
+        tag_result = await db.execute(tag_stmt)
+        obj.tags = tag_result.scalars().all()
+
     db.add(obj)
-    db.commit()
-    db.refresh(obj)
+    await db.commit()
+    await db.refresh(obj)
 
     return obj
 
@@ -72,9 +84,9 @@ def create_documentation(
     response_model=DocumentationResponse,
     tags=["Documentation"],
 )
-def get_documentation_by_id(
+async def get_documentation_by_id(
     documentation_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(),
 ):
     """
@@ -85,12 +97,14 @@ def get_documentation_by_id(
     :return: Document object
     """
     ctx.require_user()
-    query = (
-        db.query(Documentation)
+    stmt = (
+        select(Documentation)
         .filter(Documentation.id == documentation_id)
         .options(joinedload(Documentation.tags))
     )
-    document = query.first()
+    result = await db.execute(stmt)
+    document = result.unique().scalar_one_or_none()
+
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
@@ -106,7 +120,7 @@ def get_documentation_by_id(
 async def update_documentation(
     documentation_id: int,
     documentation_data: DocumentationUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(),
 ):
     """
@@ -119,21 +133,25 @@ async def update_documentation(
     """
     ctx.require_user()
     async with acquire_lock(f"documentation_lock:{documentation_id}"):
-        query = (
-            db.query(Documentation)
+        stmt = (
+            select(Documentation)
             .filter(Documentation.id == documentation_id)
             .options(joinedload(Documentation.tags))
         )
-        document = query.first()
+        result = await db.execute(stmt)
+        document = result.unique().scalar_one_or_none()
+
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
             )
+
         update_data = documentation_data.model_dump(exclude_unset=True)
         for k, v in update_data.items():
             setattr(document, k, v)
-        db.commit()
-        db.refresh(document)
+
+        await db.commit()
+        await db.refresh(document)
         return document
 
 
@@ -144,7 +162,7 @@ async def update_documentation(
 )
 async def delete_document(
     documentation_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(),
 ):
     """
@@ -156,15 +174,17 @@ async def delete_document(
     """
     ctx.require_user()
     async with acquire_lock(f"documentation_lock:{documentation_id}"):
-        query = (
-            db.query(Documentation)
+        stmt = (
+            select(Documentation)
             .filter(Documentation.id == documentation_id)
-            .options(joinedload(Documentation.tags))
         )
-        document = query.first()
+        result = await db.execute(stmt)
+        document = result.scalar_one_or_none()
+
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
             )
-        db.delete(document)
-        db.commit()
+
+        await db.delete(document)
+        await db.commit()
