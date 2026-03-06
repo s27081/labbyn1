@@ -46,7 +46,7 @@ async def create_metadata(
 @router.get("/db/metadata/", response_model=List[MetadataResponse], tags=["Metadata"])
 async def get_all_metadata(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all metadata records
@@ -69,7 +69,7 @@ async def get_all_metadata(
 async def get_metadata(
     meta_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch metadata by ID
@@ -140,7 +140,7 @@ async def update_metadata(
 async def delete_metadata(
     meta_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete Metadata

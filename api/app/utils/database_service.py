@@ -122,8 +122,7 @@ async def init_virtual_lab(db: AsyncSession):
     service_team = await init_service_team(db)
 
     stmt = select(models.Rooms).filter(
-        models.Rooms.name == "virtual",
-        models.Rooms.team_id == service_team.id
+        models.Rooms.name == "virtual", models.Rooms.team_id == service_team.id
     )
     result = await db.execute(stmt)
 
@@ -133,7 +132,6 @@ async def init_virtual_lab(db: AsyncSession):
         )
         db.add(virtual_lab)
         await db.commit()
-
 
 
 async def init_document(db: AsyncSession):
@@ -229,6 +227,7 @@ def resolve_target_team_id(ctx: RequestContext, team_id: Optional[int] = None):
             detail="Multiple teams found for user, team_id parameter is required",
         )
     return ctx.team_ids[0]
+
 
 # ==========================
 #  HISTORY TABLE MAINTANCE

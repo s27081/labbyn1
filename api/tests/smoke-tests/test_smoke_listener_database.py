@@ -26,13 +26,17 @@ async def test_full_entity_lifecycle_with_history(db_session, unique_category_na
     assert new_cat.version_id == 1
 
     history_create = (
-        (await db_session.execute(
-            select(models.History).filter(
-                models.History.entity_id == new_cat.id,
-                models.History.entity_type == models.EntityType.CATEGORIES,
-                models.History.action == models.ActionType.CREATE,
+        (
+            await db_session.execute(
+                select(models.History).filter(
+                    models.History.entity_id == new_cat.id,
+                    models.History.entity_type == models.EntityType.CATEGORIES,
+                    models.History.action == models.ActionType.CREATE,
+                )
             )
-        )).scalars().first()
+        )
+        .scalars()
+        .first()
     )
 
     assert history_create is not None, "No CREATE log in history table"
@@ -47,13 +51,18 @@ async def test_full_entity_lifecycle_with_history(db_session, unique_category_na
     assert new_cat.name == updated_name
 
     history_update = (
-        (await db_session.execute(
-            select(models.History).filter(
-                models.History.entity_id == new_cat.id,
-                models.History.action == models.ActionType.UPDATE,
+        (
+            await db_session.execute(
+                select(models.History)
+                .filter(
+                    models.History.entity_id == new_cat.id,
+                    models.History.action == models.ActionType.UPDATE,
+                )
+                .order_by(models.History.timestamp.desc())
             )
-            .order_by(models.History.timestamp.desc())
-        )).scalars().first()
+        )
+        .scalars()
+        .first()
     )
 
     assert history_update is not None, "No UPDATE log in history table"
@@ -67,11 +76,15 @@ async def test_full_entity_lifecycle_with_history(db_session, unique_category_na
     await db_session.commit()
 
     history_delete = (
-        (await db_session.execute(
-            select(models.History).filter(
-                models.History.entity_id == new_cat.id,
-                models.History.action == models.ActionType.DELETE,
+        (
+            await db_session.execute(
+                select(models.History).filter(
+                    models.History.entity_id == new_cat.id,
+                    models.History.action == models.ActionType.DELETE,
+                )
             )
-        )).scalars().first()
+        )
+        .scalars()
+        .first()
     )
     assert history_delete is not None, "No DELETE log in history table"

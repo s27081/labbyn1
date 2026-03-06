@@ -23,7 +23,7 @@ router = APIRouter(tags=["shelves"])
 async def get_shelves_by_rack(
     rack_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Get all shelves for a specific rack
@@ -42,11 +42,7 @@ async def get_shelves_by_rack(
     if not rack:
         raise HTTPException(status_code=404, detail="Rack does not exist.")
 
-    stmt = (
-        select(Shelf)
-        .filter(Shelf.rack_id == rack_id)
-        .order_by(Shelf.order.desc())
-    )
+    stmt = select(Shelf).filter(Shelf.rack_id == rack_id).order_by(Shelf.order.desc())
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -55,7 +51,7 @@ async def get_shelves_by_rack(
 async def get_single_shelf(
     shelf_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific shelf by ID with its nested machines
@@ -67,9 +63,7 @@ async def get_single_shelf(
     ctx.require_user()
 
     stmt = (
-        select(Shelf)
-        .options(joinedload(Shelf.machines))
-        .filter(Shelf.id == shelf_id)
+        select(Shelf).options(joinedload(Shelf.machines)).filter(Shelf.id == shelf_id)
     )
     result = await db.execute(stmt)
     shelf = result.unique().scalar_one_or_none()
@@ -161,7 +155,8 @@ async def update_shelf(
 
         if not rack_res.scalar_one_or_none():
             raise HTTPException(
-                status_code=403, detail="You do not have permission to manage this shelf."
+                status_code=403,
+                detail="You do not have permission to manage this shelf.",
             )
 
         update_dict = shelf_data.model_dump(exclude_unset=True)
@@ -178,7 +173,7 @@ async def update_shelf(
 async def delete_shelf(
     shelf_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete a specific shelf if it is empty
@@ -190,7 +185,11 @@ async def delete_shelf(
     ctx.require_user()
 
     async with acquire_lock(f"shelf_lock:{shelf_id}"):
-        stmt = select(Shelf).options(joinedload(Shelf.machines)).filter(Shelf.id == shelf_id)
+        stmt = (
+            select(Shelf)
+            .options(joinedload(Shelf.machines))
+            .filter(Shelf.id == shelf_id)
+        )
         result = await db.execute(stmt)
         db_shelf = result.unique().scalar_one_or_none()
 
@@ -203,7 +202,8 @@ async def delete_shelf(
 
         if not rack_res.scalar_one_or_none():
             raise HTTPException(
-                status_code=403, detail="You do not have permission to manage this shelf."
+                status_code=403,
+                detail="You do not have permission to manage this shelf.",
             )
 
         if db_shelf.machines:

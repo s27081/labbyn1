@@ -10,7 +10,12 @@ from app.db import models
 from app.main import app
 from sqlalchemy import select
 
-pytestmark = [pytest.mark.smoke, pytest.mark.api, pytest.mark.database, pytest.mark.asyncio]
+pytestmark = [
+    pytest.mark.smoke,
+    pytest.mark.api,
+    pytest.mark.database,
+    pytest.mark.asyncio,
+]
 
 
 def unique_str(prefix: str):
@@ -182,6 +187,7 @@ async def test_resource_chain_creation(test_client, service_header, db_session):
     )
     assert machine_res.status_code == 201
 
+
 async def test_machine_full_lifecycle(db_session):
     """
     Create advanced model object (new Machine).
@@ -195,9 +201,7 @@ async def test_machine_full_lifecycle(db_session):
     await db_session.refresh(test_team)
 
     room = models.Rooms(
-        name=unique_str("Room"),
-        room_type="Server",
-        team_id=test_team.id
+        name=unique_str("Room"), room_type="Server", team_id=test_team.id
     )
     db_session.add(room)
 
@@ -251,13 +255,17 @@ async def test_machine_full_lifecycle(db_session):
     assert machine.cpus[0].name == "Intel Xeon"
 
     history = (
-        (await db_session.execute(
-            select(models.History).filter(
-                models.History.entity_id == machine.id,
-                models.History.entity_type == models.EntityType.MACHINES,
-                models.History.action == models.ActionType.CREATE,
+        (
+            await db_session.execute(
+                select(models.History).filter(
+                    models.History.entity_id == machine.id,
+                    models.History.entity_type == models.EntityType.MACHINES,
+                    models.History.action == models.ActionType.CREATE,
+                )
             )
-        )).scalars().first()
+        )
+        .scalars()
+        .first()
     )
 
     assert history is not None, "History listener did not record CREATE action."

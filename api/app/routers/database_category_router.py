@@ -45,13 +45,11 @@ async def create_category(
 
 
 @router.get(
-    "/db/categories/",
-    response_model=List[CategoriesResponse],
-    tags=["Categories"]
+    "/db/categories/", response_model=List[CategoriesResponse], tags=["Categories"]
 )
 async def get_categories(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all categories (Async)
@@ -66,14 +64,12 @@ async def get_categories(
 
 
 @router.get(
-    "/db/categories/{cat_id}",
-    response_model=CategoriesResponse,
-    tags=["Categories"]
+    "/db/categories/{cat_id}", response_model=CategoriesResponse, tags=["Categories"]
 )
 async def get_category_by_id(
     cat_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific category by ID (Async)
@@ -95,9 +91,7 @@ async def get_category_by_id(
 
 
 @router.patch(
-    "/db/categories/{cat_id}",
-    response_model=CategoriesResponse,
-    tags=["Categories"]
+    "/db/categories/{cat_id}", response_model=CategoriesResponse, tags=["Categories"]
 )
 async def update_category(
     cat_id: int,
@@ -140,7 +134,7 @@ async def update_category(
 async def delete_category(
     cat_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete category (Async)

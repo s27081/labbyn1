@@ -20,6 +20,7 @@ from app.auth.dependencies import RequestContext
 
 router = APIRouter()
 
+
 def format_team_output(team: Teams):
     """
     Format team output to include admin names and member details
@@ -114,7 +115,7 @@ def format_team_full_detail(team: Teams):
                     "shelf_order": 0,
                     "tags": [
                         {"name": t.name, "color": t.color} for t in (machine.tags or [])
-                    ]
+                    ],
                 }
             )
 
@@ -203,7 +204,7 @@ async def create_team(
 @router.get("/db/teams/", response_model=List[TeamsResponse], tags=["Teams"])
 async def get_teams(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all teams
@@ -221,7 +222,7 @@ async def get_teams(
 )
 async def get_team_info(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch detailed information about the current user's team, including admin names and member details.
@@ -245,7 +246,7 @@ async def get_team_info(
 async def get_team_info_by_id(
     team_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch detailed information about a specific team by ID, including user, machines, and inventory details.
@@ -262,7 +263,10 @@ async def get_team_info_by_id(
         .options(
             joinedload(Teams.users).joinedload(UsersTeams.user),
             joinedload(Teams.racks).joinedload(Rack.tags),
-            joinedload(Teams.racks).joinedload(Rack.shelves).joinedload(Shelf.machines).joinedload(Machines.tags),
+            joinedload(Teams.racks)
+            .joinedload(Rack.shelves)
+            .joinedload(Shelf.machines)
+            .joinedload(Machines.tags),
             joinedload(Teams.machines).joinedload(Machines.tags),
             joinedload(Teams.inventory).joinedload(Inventory.room),
             joinedload(Teams.inventory).joinedload(Inventory.category),
@@ -329,7 +333,7 @@ async def update_team(
 async def delete_team(
     team_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete Team

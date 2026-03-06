@@ -26,7 +26,7 @@ router = APIRouter()
 )
 async def get_documentation(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Get all documents from documentation
@@ -63,8 +63,7 @@ async def create_documentation(
     tag_ids = documentation_data.tag_ids or []
 
     obj = Documentation(
-        **documentation_data.model_dump(exclude={"tag_ids"}),
-        author=current_author
+        **documentation_data.model_dump(exclude={"tag_ids"}), author=current_author
     )
 
     if tag_ids:
@@ -181,10 +180,7 @@ async def delete_document(
     """
     ctx.require_user()
     async with acquire_lock(f"documentation_lock:{documentation_id}"):
-        stmt = (
-            select(Documentation)
-            .filter(Documentation.id == documentation_id)
-        )
+        stmt = select(Documentation).filter(Documentation.id == documentation_id)
         result = await db.execute(stmt)
         document = result.scalar_one_or_none()
 

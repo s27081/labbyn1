@@ -93,7 +93,9 @@ async def create_user(
 
     ctx.require_group_admin()
 
-    stmt = select(User).where(or_(User.login == user_data.login, User.email == user_data.email))
+    stmt = select(User).where(
+        or_(User.login == user_data.login, User.email == user_data.email)
+    )
     result = await db.execute(stmt)
     if result.scalar_one_or_none():
         raise HTTPException(409, detail="User already exists.")
@@ -137,9 +139,11 @@ async def create_user(
 
         await db.commit()
 
-        stmt_refresh = select(User).options(
-            joinedload(User.teams).joinedload(UsersTeams.team)
-        ).where(User.id == new_user.id)
+        stmt_refresh = (
+            select(User)
+            .options(joinedload(User.teams).joinedload(UsersTeams.team))
+            .where(User.id == new_user.id)
+        )
         res_refresh = await db.execute(stmt_refresh)
         new_user = res_refresh.unique().scalar_one()
 
@@ -157,7 +161,8 @@ async def create_user(
 
 @router.get("/db/users/list_info", response_model=List[UserInfo], tags=["Users"])
 async def get_users_with_groups(
-    db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends(RequestContext.create)
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all users with their assigned groups (masked based on permissions).
@@ -174,7 +179,9 @@ async def get_users_with_groups(
 
 @router.get("/db/users/{user_id}", response_model=UserInfoExtended, tags=["Users"])
 async def get_user_detail_with_groups(
-    user_id: int, db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends(RequestContext.create)
+    user_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch full user profile including avatar and group links (requires permissions).
@@ -184,9 +191,11 @@ async def get_user_detail_with_groups(
     :return: User object with extended info
     """
     ctx.require_user()
-    stmt = select(User).options(
-        joinedload(User.teams).joinedload(UsersTeams.team)
-    ).where(User.id == user_id)
+    stmt = (
+        select(User)
+        .options(joinedload(User.teams).joinedload(UsersTeams.team))
+        .where(User.id == user_id)
+    )
 
     result = await db.execute(stmt)
     user = result.unique().scalar_one_or_none()
@@ -257,9 +266,11 @@ async def update_user(
         try:
             await db.commit()
 
-            stmt_final = select(User).options(
-                joinedload(User.teams).joinedload(UsersTeams.team)
-            ).where(User.id == user_id)
+            stmt_final = (
+                select(User)
+                .options(joinedload(User.teams).joinedload(UsersTeams.team))
+                .where(User.id == user_id)
+            )
             res_final = await db.execute(stmt_final)
             user = res_final.unique().scalar_one()
 
@@ -273,7 +284,9 @@ async def update_user(
     "/db/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"]
 )
 async def delete_user(
-    user_id: int, db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends(RequestContext.create)
+    user_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete user
@@ -363,7 +376,7 @@ async def update_user_team_role(
         stmt_req = select(UsersTeams).where(
             UsersTeams.user_id == ctx.current_user.id,
             UsersTeams.team_id == role_data.team_id,
-            UsersTeams.is_group_admin == True
+            UsersTeams.is_group_admin == True,
         )
         res_req = await db.execute(stmt_req)
         if not res_req.scalar_one_or_none():
@@ -373,8 +386,7 @@ async def update_user_team_role(
             )
 
     stmt_target = select(UsersTeams).where(
-        UsersTeams.user_id == user_id,
-        UsersTeams.team_id == role_data.team_id
+        UsersTeams.user_id == user_id, UsersTeams.team_id == role_data.team_id
     )
     res_target = await db.execute(stmt_target)
     target_membership = res_target.scalar_one_or_none()
@@ -389,9 +401,11 @@ async def update_user_team_role(
 
     try:
         await db.commit()
-        stmt_final = select(User).options(
-            joinedload(User.teams).joinedload(UsersTeams.team)
-        ).where(User.id == user_id)
+        stmt_final = (
+            select(User)
+            .options(joinedload(User.teams).joinedload(UsersTeams.team))
+            .where(User.id == user_id)
+        )
         res_final = await db.execute(stmt_final)
         user = res_final.unique().scalar_one()
 

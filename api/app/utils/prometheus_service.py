@@ -120,7 +120,9 @@ async def load_targets_file():
     if not PROMETHEUS_TARGETS_PATH:
         return []
     try:
-        async with aiofiles.open(PROMETHEUS_TARGETS_PATH, mode="r", encoding="utf-8") as file:
+        async with aiofiles.open(
+            PROMETHEUS_TARGETS_PATH, mode="r", encoding="utf-8"
+        ) as file:
             content = await file.read()
             targets = json.loads(content)
         return targets
@@ -136,7 +138,9 @@ async def save_targets_file(targets: List[dict]):
     if not PROMETHEUS_TARGETS_PATH:
         raise TargetSaveError("PROMETHEUS_TARGETS_PATH is not set.")
     try:
-        async with aiofiles.open(PROMETHEUS_TARGETS_PATH, mode="w", encoding="utf-8") as file:
+        async with aiofiles.open(
+            PROMETHEUS_TARGETS_PATH, mode="w", encoding="utf-8"
+        ) as file:
             await file.write(json.dumps(targets, indent=2))
     except (OSError, TypeError) as e:
         raise TargetSaveError(f"Failed to save targets file: {e}") from e

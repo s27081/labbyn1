@@ -55,7 +55,7 @@ async def create_item(
 )
 async def get_inventory(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all inventory items
@@ -77,7 +77,7 @@ async def get_inventory(
 )
 async def get_inventory_details(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all inventory items with detailed information from related tables (team, room, machine, category).
@@ -183,7 +183,7 @@ async def bulk_create_items(
 async def get_inventory_item_details(
     item_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all specific item with detailed information from related tables (team, room, machine, category).
@@ -254,7 +254,7 @@ async def get_inventory_item_details(
 async def get_inventory_item(
     item_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific inventory item by ID
@@ -329,7 +329,7 @@ async def update_item(
 async def delete_item(
     item_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete item in inventory

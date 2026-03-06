@@ -205,7 +205,8 @@ async def websocket_endpoint(
 
 @router.get("/prometheus/instances")
 async def get_prometheus_instances(
-    db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends(RequestContext.create)
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all unique host instances [HOST::PORT] from Prometheus.
@@ -231,7 +232,8 @@ async def get_prometheus_instances(
 
 @router.get("/prometheus/hosts")
 async def get_prometheus_hosts(
-    db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends(RequestContext.create)
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all unique hostnames/IPs [ex.192.168.1.2, server1-example.com] from Prometheus.

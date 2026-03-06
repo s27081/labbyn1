@@ -15,7 +15,9 @@ async def test_get_prometheus_instances(test_client, service_header):
                 {"instance": "host2:9090"},
             ]
         }
-        response = await test_client.get("/prometheus/instances", headers=service_header)
+        response = await test_client.get(
+            "/prometheus/instances", headers=service_header
+        )
         assert response.status_code == 200
         data = response.json()
         assert "instances" in data

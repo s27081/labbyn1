@@ -57,9 +57,7 @@ class RequestContext:
         self.current_user = current_user
         self.user_type = current_user.user_type
 
-        stmt = select(UsersTeams.team_id).where(
-            UsersTeams.user_id == current_user.id
-        )
+        stmt = select(UsersTeams.team_id).where(UsersTeams.user_id == current_user.id)
 
         result = await self.db.execute(stmt)
         self.team_ids = list(result.scalars())
@@ -105,9 +103,7 @@ class RequestContext:
             return stmt.where(model_class.team_id.in_(self.team_ids))
 
         if model_class == User:
-            return stmt.join(User.teams).where(
-                UsersTeams.team_id.in_(self.team_ids)
-            )
+            return stmt.join(User.teams).where(UsersTeams.team_id.in_(self.team_ids))
 
         return stmt
 

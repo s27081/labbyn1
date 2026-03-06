@@ -5,6 +5,7 @@ pytestmark = [
     pytest.mark.smoke,
 ]
 
+
 @pytest.mark.xfail()
 def test_redis_connection():
     """Test connection to redis service"""

@@ -6,11 +6,16 @@ from app.utils.ansible_service import REPORTS_DIR
 from app.db.models import Machines, Rooms, Metadata
 from sqlalchemy.orm import joinedload
 
-pytestmark = [pytest.mark.smoke, pytest.mark.api, pytest.mark.ansible, pytest.mark.asyncio]
+pytestmark = [
+    pytest.mark.smoke,
+    pytest.mark.api,
+    pytest.mark.ansible,
+    pytest.mark.asyncio,
+]
 
 
 def helper_write_report(
-        hostname: str, os_name: str = "Ubuntu 22.04", cpu_name: str = "Intel Test"
+    hostname: str, os_name: str = "Ubuntu 22.04", cpu_name: str = "Intel Test"
 ):
     """
     Creates a fake JSON report file on the disk to simulate Ansible output.
@@ -39,7 +44,7 @@ def helper_write_report(
 
 @pytest.mark.database
 async def test_discovery_flow(
-        test_client, db_session, service_header, mock_ansible_success
+    test_client, db_session, service_header, mock_ansible_success
 ):
     """
     Verifies that the API creates machine records in the database based on mock reports
@@ -73,7 +78,7 @@ async def test_discovery_flow(
 
 @pytest.mark.database
 async def test_refresh_flow(
-        test_client, db_session, service_header, mock_ansible_success
+    test_client, db_session, service_header, mock_ansible_success
 ):
     """
     Tests the hardware refresh logic by:

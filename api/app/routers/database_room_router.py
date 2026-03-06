@@ -62,7 +62,7 @@ async def create_room(
 @router.get("/db/rooms/", response_model=List[RoomsResponse], tags=["Rooms"])
 async def get_rooms(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all rooms
@@ -82,7 +82,7 @@ async def get_rooms(
 )
 async def get_rooms_dashboard(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all rooms with rack count and map link for dashboard
@@ -119,7 +119,7 @@ async def get_rooms_dashboard(
 async def get_room_details(
     room_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific room by ID with nested racks, shelves and machines for dashboard details
@@ -189,7 +189,7 @@ async def get_room_details(
 async def get_room_by_id(
     room_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific room by ID
@@ -272,7 +272,7 @@ async def update_room(
 async def delete_room(
     room_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete Room

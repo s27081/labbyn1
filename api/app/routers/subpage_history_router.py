@@ -70,7 +70,9 @@ def get_state_diff(
 
 @router.get("/sub/history", response_model=List[HistoryResponse], tags=["History"])
 async def get_blackboxed_history_logs(
-    limit=200, db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends(RequestContext.create)
+    limit=200,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Retrieve "blackboxed" history list.
@@ -130,7 +132,9 @@ async def get_blackboxed_history_logs(
     "/sub/history/{history_id}", response_model=HistoryResponse, tags=["History"]
 )
 async def get_blackboxed_history_item(
-    history_id: int, db: AsyncSession = Depends(get_async_db), ctx: RequestContext = Depends(RequestContext.create)
+    history_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Retrieve "blackboxed" history information.

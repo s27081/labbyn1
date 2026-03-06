@@ -65,9 +65,7 @@ PLAYBOOK_MAP = {
 
 
 async def verify_machine_ownership(
-    machine_id: int,
-    db: AsyncSession,
-    ctx: RequestContext
+    machine_id: int, db: AsyncSession, ctx: RequestContext
 ):
     """
     Check if the machine belongs to the user's team.
@@ -79,7 +77,6 @@ async def verify_machine_ownership(
     result = await db.execute(stmt)
     machine = result.scalar_one_or_none()
 
-
     if not machine:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -89,7 +86,9 @@ async def verify_machine_ownership(
 
 
 @router.post("/ansible/create_user")
-async def create_ansible_user(request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)):
+async def create_ansible_user(
+    request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)
+):
     """
     Create Ansible user on a host.
     :param request: HostRequest containing the host IP or hostname
@@ -102,7 +101,9 @@ async def create_ansible_user(request: HostRequest, ctx: RequestContext = Depend
 
 
 @router.post("/ansible/scan_platform")
-async def scan_platform(request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)):
+async def scan_platform(
+    request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)
+):
     """
     Gather information about platform.
     :param reqest: HostRequest containing the host IP or hostname
@@ -115,7 +116,9 @@ async def scan_platform(request: HostRequest, ctx: RequestContext = Depends(Requ
 
 
 @router.post("/ansible/deploy_agent")
-async def deploy_agent(request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)):
+async def deploy_agent(
+    request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)
+):
     """
     Deploy Node Exporter on a host.
     :param request: HostRequest containing the host IP or hostname
@@ -128,7 +131,9 @@ async def deploy_agent(request: HostRequest, ctx: RequestContext = Depends(Reque
 
 
 @router.post("/ansible/setup_agent")
-async def setup_agent(request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)):
+async def setup_agent(
+    request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)
+):
     """
     Workflow endpoint: first create Ansible user (if needed), then deploy Node Exporter.
     :param request: HostRequest containing the host IP or hostname
@@ -177,14 +182,20 @@ async def discover_hosts(
     elif not ctx.is_admin and target_team_id not in ctx.team_ids:
         raise HTTPException(status_code=403, detail="Access denied for this team.")
 
-    await run_playbook_task(PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], request.hosts, request.extra_vars)
+    await run_playbook_task(
+        PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], request.hosts, request.extra_vars
+    )
 
     results = []
-    res_room = await db.execute(select(Rooms).filter(Rooms.name == "virtual", Rooms.team_id == target_team_id))
+    res_room = await db.execute(
+        select(Rooms).filter(Rooms.name == "virtual", Rooms.team_id == target_team_id)
+    )
     default_room = res_room.scalar_one_or_none()
 
     if not default_room:
-        default_room = Rooms(name="virtual", room_type="virtual", team_id=target_team_id)
+        default_room = Rooms(
+            name="virtual", room_type="virtual", team_id=target_team_id
+        )
         db.add(default_room)
         await db.commit()
         await db.refresh(default_room)
@@ -207,9 +218,17 @@ async def discover_hosts(
 
                 await db.execute(delete(Disks).where(Disks.machine_id == machine.id))
                 for disk_data in specs.get("disks", []):
-                    db.add(Disks(name=disk_data["name"], capacity=disk_data.get("capacity"), machine_id=machine.id))
+                    db.add(
+                        Disks(
+                            name=disk_data["name"],
+                            capacity=disk_data.get("capacity"),
+                            machine_id=machine.id,
+                        )
+                    )
 
-                meta_res = await db.execute(select(Metadata).where(Metadata.id == machine.metadata_id))
+                meta_res = await db.execute(
+                    select(Metadata).where(Metadata.id == machine.metadata_id)
+                )
                 meta = meta_res.scalar_one_or_none()
                 if meta:
                     meta.ansible_access = True
@@ -217,18 +236,39 @@ async def discover_hosts(
                     meta.last_update = datetime.now()
                 results.append({"host": host, "status": "updated"})
             else:
-                new_meta = Metadata(last_update=datetime.now(), agent_prometheus=specs["agent_prometheus"], ansible_access=True, ansible_root_access=True)
+                new_meta = Metadata(
+                    last_update=datetime.now(),
+                    agent_prometheus=specs["agent_prometheus"],
+                    ansible_access=True,
+                    ansible_root_access=True,
+                )
                 db.add(new_meta)
                 await db.flush()
 
-                new_machine = Machines(name=host, team_id=target_team_id, metadata_id=new_meta.id, localization_id=default_room.id, os=specs["os"], ram=specs["ram"], mac_address=specs["mac_address"], ip_address=host, added_on=datetime.now())
+                new_machine = Machines(
+                    name=host,
+                    team_id=target_team_id,
+                    metadata_id=new_meta.id,
+                    localization_id=default_room.id,
+                    os=specs["os"],
+                    ram=specs["ram"],
+                    mac_address=specs["mac_address"],
+                    ip_address=host,
+                    added_on=datetime.now(),
+                )
                 db.add(new_machine)
                 await db.flush()
 
                 for cpu_data in specs.get("cpus", []):
                     db.add(CPUs(name=cpu_data["name"], machine_id=new_machine.id))
                 for disk_data in specs.get("disks", []):
-                    db.add(Disks(name=disk_data["name"], capacity=disk_data.get("capacity"), machine_id=new_machine.id))
+                    db.add(
+                        Disks(
+                            name=disk_data["name"],
+                            capacity=disk_data.get("capacity"),
+                            machine_id=new_machine.id,
+                        )
+                    )
                 results.append({"host": host, "status": "created"})
 
         except Exception as e:
@@ -246,7 +286,9 @@ async def refresh_machine_hardware(
     ctx: RequestContext = Depends(RequestContext.create),
 ):
     machine = await verify_machine_ownership(machine_id, db, ctx)
-    await run_playbook_task(PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], [machine.name], request.extra_vars)
+    await run_playbook_task(
+        PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], [machine.name], request.extra_vars
+    )
 
     try:
         specs = parse_platform_report(machine.name)
@@ -259,9 +301,17 @@ async def refresh_machine_hardware(
 
         await db.execute(delete(Disks).where(Disks.machine_id == machine.id))
         for disk_data in specs.get("disks", []):
-            db.add(Disks(name=disk_data["name"], capacity=disk_data.get("capacity"), machine_id=machine.id))
+            db.add(
+                Disks(
+                    name=disk_data["name"],
+                    capacity=disk_data.get("capacity"),
+                    machine_id=machine.id,
+                )
+            )
 
-        meta_res = await db.execute(select(Metadata).where(Metadata.id == machine.metadata_id))
+        meta_res = await db.execute(
+            select(Metadata).where(Metadata.id == machine.metadata_id)
+        )
         meta = meta_res.scalar_one_or_none()
         if meta:
             meta.ansible_access = True
@@ -285,10 +335,20 @@ async def cleanup_machine(
     async with acquire_lock(f"machine_lock:{machine_id}"):
         machine = await verify_machine_ownership(machine_id, db, ctx)
         try:
-            agent_res = await run_playbook_task(PLAYBOOK_MAP[AnsiblePlaybook.delete_agent], machine.name, request.extra_vars)
-            ansible_res = await run_playbook_task(PLAYBOOK_MAP[AnsiblePlaybook.delete_ansible], machine.name, request.extra_vars)
+            agent_res = await run_playbook_task(
+                PLAYBOOK_MAP[AnsiblePlaybook.delete_agent],
+                machine.name,
+                request.extra_vars,
+            )
+            ansible_res = await run_playbook_task(
+                PLAYBOOK_MAP[AnsiblePlaybook.delete_ansible],
+                machine.name,
+                request.extra_vars,
+            )
 
-            meta_res = await db.execute(select(Metadata).where(Metadata.id == machine.metadata_id))
+            meta_res = await db.execute(
+                select(Metadata).where(Metadata.id == machine.metadata_id)
+            )
             meta = meta_res.scalar_one_or_none()
             if meta:
                 meta.ansible_access = False
@@ -297,7 +357,11 @@ async def cleanup_machine(
                 meta.last_update = datetime.now()
 
             await db.commit()
-            return {"message": "Cleaned", "agent_result": agent_res, "ansible_result": ansible_res}
+            return {
+                "message": "Cleaned",
+                "agent_result": agent_res,
+                "ansible_result": ansible_res,
+            }
         except Exception as e:
             await db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
@@ -313,8 +377,14 @@ async def remove_agent(
     async with acquire_lock(f"machine_lock:{machine_id}"):
         machine = await verify_machine_ownership(machine_id, db, ctx)
         try:
-            agent_res = await run_playbook_task(PLAYBOOK_MAP[AnsiblePlaybook.delete_agent], machine.name, request.extra_vars)
-            meta_res = await db.execute(select(Metadata).where(Metadata.id == machine.metadata_id))
+            agent_res = await run_playbook_task(
+                PLAYBOOK_MAP[AnsiblePlaybook.delete_agent],
+                machine.name,
+                request.extra_vars,
+            )
+            meta_res = await db.execute(
+                select(Metadata).where(Metadata.id == machine.metadata_id)
+            )
             meta = meta_res.scalar_one_or_none()
             if meta:
                 meta.agent_prometheus = False

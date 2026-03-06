@@ -19,7 +19,6 @@ async def test_fetch_prometheus_metrics_success():
         assert result["status"] == []
 
 
-
 async def test_fetch_prometheus_metrics_failure():
     """Test fetching Prometheus metrics with a failure."""
     with mock.patch("app.utils.prometheus_service._request") as request:
@@ -52,7 +51,6 @@ async def test_fetch_prometheus_metrics_with_filtered_instances():
         assert len(result["status"]) == 1
         assert result["status"][0]["instance"] == "host1"
         assert result["status"][0]["value"] == 1.0
-
 
 
 async def test_add_prometheus_target():

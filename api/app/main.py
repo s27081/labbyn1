@@ -12,7 +12,7 @@ from app.routers import (
     prometheus_router,
     database_category_router,
     database_inventory_router,
-    #database_layouts_router, # To be removed after new map implementation
+    # database_layouts_router, # To be removed after new map implementation
     database_rack_router,
     database_shelf_router,
     database_machine_router,
@@ -35,7 +35,7 @@ from app.routers.prometheus_router import metrics_worker, status_worker
 from app.utils.database_service import init_super_user, init_virtual_lab, init_document
 
 # pylint: disable=unused-import
-#import app.db.listeners
+# import app.db.listeners
 
 from app.auth.auth_config import auth_backend
 from app.db.schemas import UserRead
@@ -110,7 +110,7 @@ app.include_router(
 app.include_router(prometheus_router.router)
 app.include_router(database_category_router.router)
 app.include_router(database_inventory_router.router)
-#app.include_router(database_layouts_router.router) # To be removed after new map implementation
+# app.include_router(database_layouts_router.router) # To be removed after new map implementation
 app.include_router(database_machine_router.router)
 app.include_router(database_metadata_router.router)
 app.include_router(database_rental_router.router)

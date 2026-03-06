@@ -41,7 +41,7 @@ async def test_optimistic_locking_protection(db_session):
     db_session.add(category)
     await db_session.commit()
     await db_session.refresh(category)
-    
+
     cat_id = category.id
     assert category.version_id == 1
 

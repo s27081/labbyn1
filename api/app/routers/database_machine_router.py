@@ -56,24 +56,19 @@ async def create_machine(
     obj.cpus = [CPUs(name=item.name) for item in cpus]
     obj.disks = [Disks(name=item.name) for item in disks]
 
-
     db.add(obj)
     await db.commit()
-    await db.refresh(obj, attribute_names=[
-        "team",
-        "room",
-        "machine_metadata",
-        "shelf",
-        "cpus",
-        "disks"
-    ])
+    await db.refresh(
+        obj,
+        attribute_names=["team", "room", "machine_metadata", "shelf", "cpus", "disks"],
+    )
     return obj
 
 
 @router.get("/db/machines/", response_model=List[MachinesResponse], tags=["Machines"])
 async def get_machines(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all machines
@@ -94,7 +89,7 @@ async def get_machines(
 async def get_machine_by_id(
     machine_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific machine by ID
@@ -125,7 +120,7 @@ async def get_machine_by_id(
 async def get_machine_full_detail(
     machine_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific machine by ID
@@ -276,14 +271,17 @@ async def update_machine(
             setattr(machine, k, v)
 
         await db.commit()
-        await db.refresh(machine, attribute_names=[
-            "team",
-            "localization",
-            "metadata",
-            "shelf",
-            "cpus",
-            "disks"
-        ])
+        await db.refresh(
+            machine,
+            attribute_names=[
+                "team",
+                "localization",
+                "metadata",
+                "shelf",
+                "cpus",
+                "disks",
+            ],
+        )
         return machine
 
 
@@ -295,7 +293,7 @@ async def update_machine(
 async def delete_machine(
     machine_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete Machine
@@ -349,7 +347,9 @@ async def mount_machine(
                 status_code=404, detail="Machine not found or access denied"
             )
 
-        shelf_stmt = select(Shelf).filter(Shelf.id == shelf_id).options(joinedload(Shelf.rack))
+        shelf_stmt = (
+            select(Shelf).filter(Shelf.id == shelf_id).options(joinedload(Shelf.rack))
+        )
         shelf_res = await db.execute(shelf_stmt)
         shelf = shelf_res.scalar_one_or_none()
 
@@ -377,7 +377,7 @@ async def mount_machine(
 async def unmount_machine(
     machine_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Removes a machine from its current shelf (sets shelf_id to NULL)

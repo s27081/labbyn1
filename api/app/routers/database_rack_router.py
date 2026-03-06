@@ -93,7 +93,7 @@ async def get_racks(
 @router.get("/db/racks-list", tags=["Racks"])
 async def get_racks_list(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Returns a simple list of rack names and IDs for dropdowns
@@ -115,7 +115,7 @@ async def get_racks_list(
 async def get_rack_detail(
     rack_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific rack by ID with its nested shelves and machines
@@ -156,7 +156,7 @@ async def get_rack_detail(
 async def create_rack(
     rack: RackCreate,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Create a new rack with team and room validation
@@ -278,7 +278,7 @@ async def update_rack(
 async def delete_rack(
     rack_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete a specific rack from the database
@@ -301,8 +301,7 @@ async def delete_rack(
         )
 
     v_room_stmt = select(Rooms).where(
-        Rooms.team_id == db_rack.team_id,
-        Rooms.room_type == "virtual"
+        Rooms.team_id == db_rack.team_id, Rooms.room_type == "virtual"
     )
     v_room_res = await db.execute(v_room_stmt)
     virtual_room = v_room_res.scalar_one_or_none()
@@ -336,7 +335,7 @@ async def delete_rack(
 async def get_rack_info_by_id(
     rack_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch detailed information about a specific rack by ID including ordered machine list
@@ -346,10 +345,14 @@ async def get_rack_info_by_id(
     :return: Rack object
     """
     ctx.require_user()
-    stmt = select(Rack).where(Rack.id == rack_id).options(
-        joinedload(Rack.team),
-        joinedload(Rack.tags),
-        joinedload(Rack.shelves).joinedload(Shelf.machines)
+    stmt = (
+        select(Rack)
+        .where(Rack.id == rack_id)
+        .options(
+            joinedload(Rack.team),
+            joinedload(Rack.tags),
+            joinedload(Rack.shelves).joinedload(Shelf.machines),
+        )
     )
 
     result = await db.execute(stmt)

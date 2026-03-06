@@ -49,13 +49,10 @@ async def create_rental(
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
 
-        sum_stmt = (
-            select(func.coalesce(func.sum(Rentals.quantity), 0))
-            .filter(
-                Rentals.item_id == item.id,
-                Rentals.start_date <= rent_data.end_date,
-                Rentals.end_date >= rent_data.start_date,
-            )
+        sum_stmt = select(func.coalesce(func.sum(Rentals.quantity), 0)).filter(
+            Rentals.item_id == item.id,
+            Rentals.start_date <= rent_data.end_date,
+            Rentals.end_date >= rent_data.start_date,
         )
         sum_result = await db.execute(sum_stmt)
         active_rentals_sum = sum_result.scalar()
@@ -161,7 +158,7 @@ async def return_rental(
 @router.get("/db/rentals/", response_model=List[RentalsResponse], tags=["Rentals"])
 async def get_rentals(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Get all rentals
@@ -180,7 +177,7 @@ async def get_rentals(
 async def get_rental_by_id(
     rental_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Get specific rental by ID
@@ -213,7 +210,7 @@ async def get_rental_by_id(
 async def delete_rental(
     rental_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete rental history

@@ -32,7 +32,9 @@ DO NOT use these endpoints for new features, as the underlying data model will b
     tags=["Layout"],
 )
 def create_layout_coord(
-    data: LayoutCreate, db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)
+    data: LayoutCreate,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Create layout coordinate
@@ -71,7 +73,9 @@ def get_all_layout_coords(
 
 @router.get("/db/layout/{layout_id}", response_model=LayoutResponse, tags=["Layout"])
 def get_layout_coord_by_id(
-    layout_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)
+    layout_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific layout coordinate by ID
@@ -136,7 +140,9 @@ async def update_layout_coord(
     "/db/layout/{layout_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Layout"]
 )
 async def delete_layout_coord(
-    layout_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)
+    layout_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete layout coordinate
@@ -163,7 +169,9 @@ async def delete_layout_coord(
     tags=["Layouts"],
 )
 def create_layout_assign(
-    data: LayoutsCreate, db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)
+    data: LayoutsCreate,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Create layout assignment
@@ -188,7 +196,9 @@ def create_layout_assign(
 
 
 @router.get("/db/layouts/", response_model=List[LayoutsResponse], tags=["Layouts"])
-def get_all_layouts(db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)):
+def get_all_layouts(
+    db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)
+):
     """
     Fetch all layout assignments
     :param db: Active database session
@@ -203,7 +213,9 @@ def get_all_layouts(db: Session = Depends(get_db), ctx: RequestContext = Depends
     "/db/layouts/{layouts_id}", response_model=LayoutsResponse, tags=["Layouts"]
 )
 def get_layouts_assign_by_id(
-    layouts_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)
+    layouts_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific layout assignment by ID
@@ -258,7 +270,9 @@ async def update_layout_assign(
     "/db/layouts/{layouts_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Layouts"]
 )
 async def delete_layout_assign(
-    layouts_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)
+    layouts_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete layout assignment

@@ -28,7 +28,7 @@ ENTITY_MAP = {
 )
 async def get_tags(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Get all tags from DB
@@ -46,7 +46,7 @@ async def get_tags(
 async def assign_tag(
     data: TagsAssignment,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     ctx.require_user()
 
@@ -90,7 +90,7 @@ async def assign_tag(
 async def detach_tag(
     data: TagsAssignment,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     ctx.require_user()
 
@@ -116,7 +116,9 @@ async def detach_tag(
                 entity.tags.remove(tag)
                 await db.commit()
 
-        return {"message": f"Tag {tag.name if tag else 'Unknown'} detached from {data.entity_type}"}
+        return {
+            "message": f"Tag {tag.name if tag else 'Unknown'} detached from {data.entity_type}"
+        }
 
 
 @router.post(

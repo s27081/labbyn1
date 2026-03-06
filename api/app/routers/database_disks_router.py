@@ -64,7 +64,7 @@ async def create_disk(
 @router.get("/db/disks/", response_model=List[DiskResponse], tags=["Disks"])
 async def get_disks(
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch all Disks
@@ -83,7 +83,7 @@ async def get_disks(
 async def get_disk_by_id(
     disk_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Fetch specific disk by ID
@@ -146,7 +146,7 @@ async def update_disk(
 async def delete_disk(
     disk_id: int,
     db: AsyncSession = Depends(get_async_db),
-    ctx: RequestContext = Depends(RequestContext.create)
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """
     Delete disk

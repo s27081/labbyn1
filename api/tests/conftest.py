@@ -12,6 +12,7 @@ from app.database import AsyncSessionLocal
 from app.main import app
 from app.utils.redis_service import redis_manager
 
+
 @pytest.fixture(scope="session")
 def event_loop():
     """
