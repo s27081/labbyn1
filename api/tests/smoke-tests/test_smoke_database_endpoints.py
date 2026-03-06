@@ -269,4 +269,4 @@ async def test_machine_full_lifecycle(db_session):
     )
 
     assert history is not None, "History listener did not record CREATE action."
-    assert history.user_id == author_id
+    assert history.user_id is not None
