@@ -812,7 +812,7 @@ class MachinesUpdate(BaseModel):
     """
 
     name: Optional[str] = Field(None, max_length=100)
-    localization_id: Optional[int] = None
+    room_id: Optional[int] = None
     ip_address: Optional[str] = Field(None, max_length=16)
     mac_address: Optional[str] = Field(None, max_length=17)
     pdu_port: Optional[int] = None
@@ -878,9 +878,12 @@ class MachineFullDetailResponse(BaseModel):
 
     team_id: Optional[int]
     team_name: str
+    rack_id: Optional[int]
     rack_name: Optional[str]
     room_name: str
+    room_id: int
     shelf_number: int
+    shelf_id: int
 
     last_update: Optional[date]
     monitoring: bool

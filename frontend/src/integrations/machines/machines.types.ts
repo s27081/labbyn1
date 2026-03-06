@@ -47,10 +47,13 @@ export interface ApiMachineInfo {
   pdu_port: number
   added_on: string // format: date-time
   shelf_number: number | null
+  shelf_id: number | null
   team_id: string | null
   team_name: string
+  rack_id: number | null
   rack_name: string
   room_name: string
+  room_id: number | null
   last_update: string // format: date-time
   monitoring: boolean
   ansible_access: boolean
@@ -102,7 +105,7 @@ export interface PlatformFormValues {
 
 export interface MachineUpdate {
   name?: string | null
-  localization_id?: number | null
+  room_id?: number | null
   mac_address?: string | null
   ip_address?: string | null
   pdu_port?: number | null

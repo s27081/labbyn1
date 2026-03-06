@@ -192,11 +192,14 @@ async def get_machine_full_detail(
         "added_on": machine.added_on,
         "team_id": machine.team_id,
         "team_name": machine.team.name if machine.team else "N/A",
+        "rack_id": machine.shelf.rack_id if (machine.shelf and machine.shelf.rack) else None,
         "rack_name": (
             machine.shelf.rack.name if (machine.shelf and machine.shelf.rack) else "N/A"
         ),
+        "shelf_id": machine.shelf.id if machine.shelf else "N/A",
         "shelf_number": machine.shelf.order if machine.shelf else "N/A",
         "room_name": machine.room.name if machine.room else "N/A",
+        "room_id": machine.room.id if machine.room else None,
         "last_update": machine.machine_metadata.last_update,
         "monitoring": machine.machine_metadata.agent_prometheus,
         "ansible_access": machine.machine_metadata.ansible_access,
