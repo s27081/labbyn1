@@ -1,10 +1,12 @@
 import { create } from 'zustand'
-import type { Equipment, Wall } from '@/types/types'
+import type { Equipment, WallNode, WallSegment } from '@/types/types'
 
 interface LabState {
   equipment: Record<string, Equipment>
-  walls: Record<string, Wall>
+  wallNodes: Record<string, WallNode>
+  wallSegments: Record<string, WallSegment>
   hasUnsavedChanges: boolean
+
   initEquipment: (eqArray: Array<Equipment>) => void
   addEquipment: (eq: Equipment) => void
   updateMultipleEquipment: (
@@ -12,19 +14,27 @@ interface LabState {
   ) => void
   deleteMultipleEquipment: (ids: Array<string>) => void
   getEquipmentArray: () => Array<Equipment>
-  initWalls: (wallArray: Array<Wall>) => void
-  addWall: (wall: Wall) => void
-  updateMultipleWalls: (
-    updates: Array<{ id: string; updates: Partial<Wall> }>,
+
+  initWallNodes: (nodesArray: Array<WallNode>) => void
+  addWallNode: (node: WallNode) => void
+  updateMultipleWallNodes: (
+    updates: Array<{ id: string; updates: Partial<WallNode> }>,
   ) => void
-  deleteMultipleWalls: (ids: Array<string>) => void
-  getWallsArray: () => Array<Wall>
+  deleteMultipleWallNodes: (ids: Array<string>) => void
+  getWallNodesArray: () => Array<WallNode>
+
+  initWallSegments: (segmentsArray: Array<WallSegment>) => void
+  addWallSegment: (segment: WallSegment) => void
+  deleteMultipleWallSegments: (ids: Array<string>) => void
+  getWallSegmentsArray: () => Array<WallSegment>
+
   markSaved: () => void
 }
 
 export const useLabStore = create<LabState>((set, get) => ({
   equipment: {},
-  walls: {},
+  wallNodes: {},
+  wallSegments: {},
   hasUnsavedChanges: false,
 
   initEquipment: (eqArray) =>
@@ -57,35 +67,56 @@ export const useLabStore = create<LabState>((set, get) => ({
 
   getEquipmentArray: () => Object.values(get().equipment),
 
-  initWalls: (wallArray) =>
+  initWallNodes: (nodesArray) =>
     set({
-      walls: Object.fromEntries(wallArray.map((w) => [w.id, w])),
+      wallNodes: Object.fromEntries(nodesArray.map((n) => [n.id, n])),
       hasUnsavedChanges: false,
     }),
 
-  addWall: (wall) =>
+  addWallNode: (node) =>
     set((state) => ({
-      walls: { ...state.walls, [wall.id]: wall },
+      wallNodes: { ...state.wallNodes, [node.id]: node },
       hasUnsavedChanges: true,
     })),
 
-  updateMultipleWalls: (updatesList) =>
+  updateMultipleWallNodes: (updatesList) =>
     set((state) => {
-      const newWalls = { ...state.walls }
+      const newNodes = { ...state.wallNodes }
       updatesList.forEach(({ id, updates }) => {
-        if (newWalls[id]) newWalls[id] = { ...newWalls[id], ...updates }
+        if (newNodes[id]) newNodes[id] = { ...newNodes[id], ...updates }
       })
-      return { walls: newWalls, hasUnsavedChanges: true }
+      return { wallNodes: newNodes, hasUnsavedChanges: true }
     }),
 
-  deleteMultipleWalls: (ids) =>
+  deleteMultipleWallNodes: (ids) =>
     set((state) => {
-      const newWalls = { ...state.walls }
-      ids.forEach((id) => delete newWalls[id])
-      return { walls: newWalls, hasUnsavedChanges: true }
+      const newNodes = { ...state.wallNodes }
+      ids.forEach((id) => delete newNodes[id])
+      return { wallNodes: newNodes, hasUnsavedChanges: true }
     }),
 
-  getWallsArray: () => Object.values(get().walls),
+  getWallNodesArray: () => Object.values(get().wallNodes),
+
+  initWallSegments: (segmentsArray) =>
+    set({
+      wallSegments: Object.fromEntries(segmentsArray.map((s) => [s.id, s])),
+      hasUnsavedChanges: false,
+    }),
+
+  addWallSegment: (segment) =>
+    set((state) => ({
+      wallSegments: { ...state.wallSegments, [segment.id]: segment },
+      hasUnsavedChanges: true,
+    })),
+
+  deleteMultipleWallSegments: (ids) =>
+    set((state) => {
+      const newSegments = { ...state.wallSegments }
+      ids.forEach((id) => delete newSegments[id])
+      return { wallSegments: newSegments, hasUnsavedChanges: true }
+    }),
+
+  getWallSegmentsArray: () => Object.values(get().wallSegments),
 
   markSaved: () => set({ hasUnsavedChanges: false }),
 }))

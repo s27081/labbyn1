@@ -66,3 +66,15 @@ export interface Wall {
   x2: number
   y2: number
 }
+
+export interface WallNode {
+  id: string
+  x: number
+  y: number
+}
+
+export interface WallSegment {
+  id: string
+  node1Id: string
+  node2Id: string
+}

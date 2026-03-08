@@ -16,7 +16,7 @@ export function generateDefaultLabLoadout() {
   // Helper do ścian
   const addWall = (x1: number, y1: number, x2: number, y2: number) => {
     walls.push({
-      id: `w-${Math.random().toString(36).substr(2, 9)}`,
+      id: `WALL-${Math.random().toString(36).substr(2, 9)}`,
       x1,
       y1,
       x2,

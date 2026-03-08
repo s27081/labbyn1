@@ -41,7 +41,7 @@ import type {
   MapControls as MapControlsImpl,
   TransformControls as TransformControlsImpl,
 } from 'three-stdlib'
-import type { Equipment, Wall } from '@/types/types'
+import type { Equipment, WallNode, WallSegment } from '@/types/types'
 import { Button } from '@/components/ui/button'
 import { useLabStore } from '@/lib/store'
 
@@ -149,12 +149,14 @@ function useThemeColors() {
 function useLabHistory(
   initEquipment: (eq: Array<Equipment>) => void,
   getEquipmentArray: () => Array<Equipment>,
-  setWalls: React.Dispatch<React.SetStateAction<Array<Wall>>>,
+  setWallNodes: React.Dispatch<React.SetStateAction<Array<WallNode>>>,
+  setWallSegments: React.Dispatch<React.SetStateAction<Array<WallSegment>>>,
   setLabels: React.Dispatch<React.SetStateAction<Array<LabLabel>>>,
 ) {
   interface HistoryState {
     equipment: Array<Equipment>
-    walls: Array<Wall>
+    wallNodes: Array<WallNode>
+    wallSegments: Array<WallSegment>
     labels: Array<LabLabel>
   }
 
@@ -162,12 +164,17 @@ function useLabHistory(
   const [historyIndex, setHistoryIndex] = useState(-1)
 
   const saveToHistory = useCallback(
-    (currentWalls: Array<Wall>, currentLabels: Array<LabLabel>) => {
+    (
+      currentNodes: Array<WallNode>,
+      currentSegments: Array<WallSegment>,
+      currentLabels: Array<LabLabel>,
+    ) => {
       setHistory((prev) => {
         const newHistory = prev.slice(0, Math.max(0, historyIndex + 1))
         newHistory.push({
           equipment: [...getEquipmentArray()],
-          walls: [...currentWalls],
+          wallNodes: [...currentNodes],
+          wallSegments: [...currentSegments],
           labels: [...currentLabels],
         })
         return newHistory.slice(-25)
@@ -178,7 +185,11 @@ function useLabHistory(
   )
 
   const undo = useCallback(
-    (currentWalls: Array<Wall>, currentLabels: Array<LabLabel>) => {
+    (
+      currentNodes: Array<WallNode>,
+      currentSegments: Array<WallSegment>,
+      currentLabels: Array<LabLabel>,
+    ) => {
       if (historyIndex >= 0) {
         let currentHistory = history
         if (historyIndex === history.length - 1 && history.length < 25) {
@@ -186,7 +197,8 @@ function useLabHistory(
             ...history,
             {
               equipment: getEquipmentArray(),
-              walls: currentWalls,
+              wallNodes: currentNodes,
+              wallSegments: currentSegments,
               labels: currentLabels,
             },
           ]
@@ -194,7 +206,8 @@ function useLabHistory(
         }
         const prev = currentHistory[historyIndex]
         initEquipment(prev.equipment)
-        setWalls(prev.walls)
+        setWallNodes(prev.wallNodes)
+        setWallSegments(prev.wallSegments)
         setLabels(prev.labels)
         setHistoryIndex(historyIndex - 1)
       }
@@ -204,7 +217,8 @@ function useLabHistory(
       historyIndex,
       getEquipmentArray,
       initEquipment,
-      setWalls,
+      setWallNodes,
+      setWallSegments,
       setLabels,
     ],
   )
@@ -214,18 +228,26 @@ function useLabHistory(
     if (nextIdx < history.length - 1) {
       const next = history[nextIdx + 1]
       initEquipment(next.equipment)
-      setWalls(next.walls)
+      setWallNodes(next.wallNodes)
+      setWallSegments(next.wallSegments)
       setLabels(next.labels)
       setHistoryIndex(nextIdx)
     }
-  }, [history, historyIndex, initEquipment, setWalls, setLabels])
+  }, [
+    history,
+    historyIndex,
+    initEquipment,
+    setWallNodes,
+    setWallSegments,
+    setLabels,
+  ])
 
   return { history, historyIndex, saveToHistory, undo, redo }
 }
 
 function useBoxSelection(
   mode: EditMode,
-  walls: Array<Wall>,
+  wallNodes: Array<WallNode>,
   setSelectedIds: React.Dispatch<React.SetStateAction<Array<string>>>,
 ) {
   const [selectStart, setSelectStart] = useState<THREE.Vector3 | null>(null)
@@ -270,26 +292,26 @@ function useBoxSelection(
           })
           .map((eq) => eq.id)
 
-        const selectedWalls = walls
-          .filter((w) => {
-            const cx = (w.x1 + w.x2) / 20
-            const cz = (w.y1 + w.y2) / 20
+        const selectedNodes = wallNodes
+          .filter((n) => {
+            const cx = n.x / 10
+            const cz = n.y / 10
             return cx >= minX && cx <= maxX && cz >= minZ && cz <= maxZ
           })
-          .map((w) => w.id)
+          .map((n) => n.id)
 
         setSelectedIds((prev) => {
           if (e.shiftKey)
             return Array.from(
-              new Set([...prev, ...selectedRacks, ...selectedWalls]),
+              new Set([...prev, ...selectedRacks, ...selectedNodes]),
             )
-          return [...selectedRacks, ...selectedWalls]
+          return [...selectedRacks, ...selectedNodes]
         })
         setSelectStart(null)
         setSelectEnd(null)
       }
     },
-    [mode, selectStart, selectEnd, walls, setSelectedIds],
+    [mode, selectStart, selectEnd, wallNodes, setSelectedIds],
   )
 
   return {
@@ -308,11 +330,13 @@ function useBoxSelection(
 function GhostPreview({
   mode,
   wallStart,
+  wallNodes,
 }: {
   mode: EditMode
   wallStart: THREE.Vector3 | null
+  wallNodes: Array<WallNode>
 }) {
-  const meshRef = useRef<THREE.Group>(null)
+  const cursorRef = useRef<THREE.Group>(null)
   const wallMeshRef = useRef<THREE.Mesh>(null)
   const { mouse, camera } = useThree()
   const plane = useMemo(
@@ -323,38 +347,55 @@ function GhostPreview({
   const point = useMemo(() => new THREE.Vector3(), [])
 
   useFrame(() => {
-    if (!meshRef.current || (mode !== 'add-rack' && mode !== 'add-wall')) return
     raycaster.setFromCamera(mouse, camera)
     raycaster.ray.intersectPlane(plane, point)
-    const snappedX = Math.round(point.x)
-    const snappedZ = Math.round(point.z)
-    meshRef.current.position.set(snappedX, 0, snappedZ)
+
+    let snappedX = Math.round(point.x)
+    let snappedZ = Math.round(point.z)
+
+    if (mode === 'add-wall' && wallNodes) {
+      for (const n of wallNodes) {
+        if (Math.hypot(n.x / 10 - point.x, n.y / 10 - point.z) < 3) {
+          snappedX = n.x / 10
+          snappedZ = n.y / 10
+          break
+        }
+      }
+    }
+
+    if (cursorRef.current) {
+      cursorRef.current.position.set(snappedX, 0, snappedZ)
+    }
 
     if (mode === 'add-wall' && wallStart && wallMeshRef.current) {
       const dist = wallStart.distanceTo(
         new THREE.Vector3(snappedX, 0, snappedZ),
       )
       const angle = Math.atan2(snappedZ - wallStart.z, snappedX - wallStart.x)
+
       wallMeshRef.current.scale.set(dist || 0.1, 1, 1)
       wallMeshRef.current.position.set(
         (wallStart.x + snappedX) / 2,
         WALL_H / 2,
         (wallStart.z + snappedZ) / 2,
       )
-      meshRef.current.rotation.y = -angle
-    } else {
-      meshRef.current.rotation.y = 0
+      wallMeshRef.current.rotation.y = -angle
     }
   })
 
   return (
-    <group ref={meshRef}>
-      {mode === 'add-rack' && (
-        <mesh position={[0, RACK_SIZE.h / 2, 0]}>
-          <boxGeometry args={[RACK_SIZE.w, RACK_SIZE.h, RACK_SIZE.d]} />
-          <meshStandardMaterial color="#3b82f6" transparent opacity={0.3} />
-        </mesh>
-      )}
+    <group>
+      {/* 1. The cursor indicator (Only used for rack placement right now) */}
+      <group ref={cursorRef}>
+        {mode === 'add-rack' && (
+          <mesh position={[0, RACK_SIZE.h / 2, 0]}>
+            <boxGeometry args={[RACK_SIZE.w, RACK_SIZE.h, RACK_SIZE.d]} />
+            <meshStandardMaterial color="#3b82f6" transparent opacity={0.3} />
+          </mesh>
+        )}
+      </group>
+
+      {/* 2. The connecting wall preview (Independently tracked) */}
       {mode === 'add-wall' && wallStart && (
         <mesh ref={wallMeshRef} geometry={wallGeometryBase}>
           <meshStandardMaterial color="#3b82f6" transparent opacity={0.3} />
@@ -496,13 +537,20 @@ function Rack({
   const yAxis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
 
   useFrame((state) => {
-    if (groupRef.current && data) {
+    const currentData = useLabStore.getState().equipment[id] || data
+    const rackRotation = (currentData as any)?.rotation || 0
+
+    if (groupRef.current && currentData) {
       if (
         isSelected &&
         groupCenter &&
         (dragDeltaRef.current.lengthSq() > 0 || dragDeltaRotRef.current !== 0)
       ) {
-        vOffset.set(data.x / 10 - groupCenter.x, 0, data.y / 10 - groupCenter.z)
+        vOffset.set(
+          currentData.x / 10 - groupCenter.x,
+          0,
+          currentData.y / 10 - groupCenter.z,
+        )
         vOffset.applyAxisAngle(yAxis, dragDeltaRotRef.current)
 
         groupRef.current.position.set(
@@ -516,7 +564,11 @@ function Rack({
           0,
         )
       } else {
-        groupRef.current.position.set(data.x / 10, RACK_SIZE.h / 2, data.y / 10)
+        groupRef.current.position.set(
+          currentData.x / 10,
+          RACK_SIZE.h / 2,
+          currentData.y / 10,
+        )
         groupRef.current.rotation.set(0, rackRotation, 0)
       }
     }
@@ -635,8 +687,8 @@ function Rack({
   )
 }
 
-function WallInstance({
-  data,
+function WallNodeRenderer({
+  node,
   colors,
   mode,
   isSelected,
@@ -645,8 +697,9 @@ function WallInstance({
   groupCenter,
   onSelect,
   onDelete,
+  onDrawConnect,
 }: {
-  data: Wall
+  node: WallNode
   colors: any
   mode: EditMode
   isSelected: boolean
@@ -654,14 +707,17 @@ function WallInstance({
   dragDeltaRotRef: React.MutableRefObject<number>
   groupCenter: THREE.Vector3 | null
   onSelect: (id: string, shift: boolean) => void
-  onDelete: () => void
+  onDelete: (id: string) => void
+  onDrawConnect: (node: WallNode) => void
 }) {
   const groupRef = useRef<THREE.Group>(null)
-  const p1 = useMemo(() => new THREE.Vector3(), [])
-  const p2 = useMemo(() => new THREE.Vector3(), [])
+  const [hovered, setHovered] = useState(false)
   const yAxis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
+  const p1 = useMemo(() => new THREE.Vector3(), [])
 
   useFrame(() => {
+    const currentNode = useLabStore.getState().wallNodes[node.id] || node
+
     if (
       groupRef.current &&
       isSelected &&
@@ -669,44 +725,147 @@ function WallInstance({
       (dragDeltaRef.current.lengthSq() > 0 || dragDeltaRotRef.current !== 0)
     ) {
       p1.set(
-        data.x1 / 10 - groupCenter.x,
+        currentNode.x / 10 - groupCenter.x,
         0,
-        data.y1 / 10 - groupCenter.z,
+        currentNode.y / 10 - groupCenter.z,
       ).applyAxisAngle(yAxis, dragDeltaRotRef.current)
-      const nx1 = groupCenter.x + p1.x + dragDeltaRef.current.x
-      const nz1 = groupCenter.z + p1.z + dragDeltaRef.current.z
-
-      p2.set(
-        data.x2 / 10 - groupCenter.x,
-        0,
-        data.y2 / 10 - groupCenter.z,
-      ).applyAxisAngle(yAxis, dragDeltaRotRef.current)
-      const nx2 = groupCenter.x + p2.x + dragDeltaRef.current.x
-      const nz2 = groupCenter.z + p2.z + dragDeltaRef.current.z
-
-      const len = Math.sqrt((nx2 - nx1) ** 2 + (nz2 - nz1) ** 2)
-      const ang = Math.atan2(nz2 - nz1, nx2 - nx1)
-
-      groupRef.current.position.set(
-        (nx1 + nx2) / 2,
-        WALL_H / 2,
-        (nz1 + nz2) / 2,
-      )
-      groupRef.current.rotation.set(0, -ang, 0)
-      groupRef.current.scale.set(len, 1, 1)
+      const nx = groupCenter.x + p1.x + dragDeltaRef.current.x
+      const nz = groupCenter.z + p1.z + dragDeltaRef.current.z
+      groupRef.current.position.set(nx, WALL_H / 2, nz)
     } else if (groupRef.current) {
-      const x1 = data.x1 / 10,
-        z1 = data.y1 / 10
-      const x2 = data.x2 / 10,
-        z2 = data.y2 / 10
-      const len = Math.sqrt((x2 - x1) ** 2 + (z2 - z1) ** 2)
-      const ang = Math.atan2(z2 - z1, x2 - x1)
-
-      groupRef.current.position.set((x1 + x2) / 2, WALL_H / 2, (z1 + z2) / 2)
-      groupRef.current.rotation.set(0, -ang, 0)
-      groupRef.current.scale.set(len, 1, 1)
+      groupRef.current.position.set(
+        currentNode.x / 10,
+        WALL_H / 2,
+        currentNode.y / 10,
+      )
     }
   })
+
+  return (
+    <group
+      ref={groupRef}
+      onPointerOver={(e) => {
+        e.stopPropagation()
+        setHovered(true)
+      }}
+      onPointerOut={(e) => {
+        e.stopPropagation()
+        setHovered(false)
+      }}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (mode === 'select') return
+        if (mode === 'add-wall') onDrawConnect(node)
+        else if (mode === 'delete') onDelete(node.id)
+        else if (['move', 'rotate', 'view'].includes(mode)) {
+          if (!isSelected || mode === 'view') onSelect(node.id, e.shiftKey)
+        }
+      }}
+    >
+      {/* Visible Joint / Pillar - ALWAYS VISIBLE */}
+      <mesh position={[0, 0, 0]}>
+        <cylinderGeometry args={[2, 2, WALL_H + 0.5, 16]} />
+        <meshStandardMaterial
+          color={
+            mode === 'delete' && hovered
+              ? '#ef4444'
+              : isSelected
+                ? colors.primary
+                : hovered
+                  ? '#f59e0b' // Amber on hover
+                  : '#94a3b8' // Slate colored node
+          }
+          transparent
+          opacity={0.9}
+        />
+      </mesh>
+
+      {/* Invisible interaction cylinder for much easier clicking - ALWAYS ACTIVE */}
+      <mesh>
+        <cylinderGeometry args={[5, 5, WALL_H, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+    </group>
+  )
+}
+
+function WallSegmentRenderer({
+  segment,
+  node1,
+  node2,
+  colors,
+  isNode1Selected,
+  isNode2Selected,
+  dragDeltaRef,
+  dragDeltaRotRef,
+  groupCenter,
+  mode,
+  onSelectSegment,
+  onDelete,
+}: {
+  segment: WallSegment
+  node1?: WallNode
+  node2?: WallNode
+  colors: any
+  isNode1Selected: boolean
+  isNode2Selected: boolean
+  dragDeltaRef: React.MutableRefObject<THREE.Vector3>
+  dragDeltaRotRef: React.MutableRefObject<number>
+  groupCenter: THREE.Vector3 | null
+  mode: EditMode
+  onSelectSegment: (id1: string, id2: string, shift: boolean) => void
+  onDelete: (id: string) => void
+}) {
+  const groupRef = useRef<THREE.Group>(null)
+  const yAxis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
+  const p1 = useMemo(() => new THREE.Vector3(), [])
+  const p2 = useMemo(() => new THREE.Vector3(), [])
+
+  useFrame(() => {
+    if (!groupRef.current || !node1 || !node2) return
+
+    const n1 = useLabStore.getState().wallNodes[node1.id] || node1
+    const n2 = useLabStore.getState().wallNodes[node2.id] || node2
+
+    let nx1 = n1.x / 10
+    let nz1 = n1.y / 10
+    let nx2 = n2.x / 10
+    let nz2 = n2.y / 10
+
+    if (
+      groupCenter &&
+      (dragDeltaRef.current.lengthSq() > 0 || dragDeltaRotRef.current !== 0)
+    ) {
+      if (isNode1Selected) {
+        p1.set(
+          n1.x / 10 - groupCenter.x,
+          0,
+          n1.y / 10 - groupCenter.z,
+        ).applyAxisAngle(yAxis, dragDeltaRotRef.current)
+        nx1 = groupCenter.x + p1.x + dragDeltaRef.current.x
+        nz1 = groupCenter.z + p1.z + dragDeltaRef.current.z
+      }
+      if (isNode2Selected) {
+        p2.set(
+          n2.x / 10 - groupCenter.x,
+          0,
+          n2.y / 10 - groupCenter.z,
+        ).applyAxisAngle(yAxis, dragDeltaRotRef.current)
+        nx2 = groupCenter.x + p2.x + dragDeltaRef.current.x
+        nz2 = groupCenter.z + p2.z + dragDeltaRef.current.z
+      }
+    }
+
+    const len = Math.sqrt((nx2 - nx1) ** 2 + (nz2 - nz1) ** 2)
+    const ang = Math.atan2(nz2 - nz1, nx2 - nx1)
+
+    groupRef.current.position.set((nx1 + nx2) / 2, WALL_H / 2, (nz1 + nz2) / 2)
+    groupRef.current.rotation.set(0, -ang, 0)
+    groupRef.current.scale.set(len || 0.1, 1, 1)
+  })
+
+  if (!node1 || !node2) return null
+  const isSelected = isNode1Selected || isNode2Selected
 
   return (
     <group
@@ -714,9 +873,9 @@ function WallInstance({
       onClick={(e) => {
         e.stopPropagation()
         if (mode === 'select') return
-        if (mode === 'delete') onDelete()
-        else if (mode === 'move' || mode === 'rotate' || mode === 'view') {
-          if (!isSelected || mode === 'view') onSelect(data.id, e.shiftKey)
+        if (mode === 'delete') onDelete(segment.id)
+        else if (['move', 'rotate', 'view'].includes(mode)) {
+          onSelectSegment(node1.id, node2.id, e.shiftKey)
         }
       }}
     >
@@ -737,8 +896,6 @@ function WallInstance({
   )
 }
 
-// --- Main Application Component ---
-
 export function CanvasComponent3D({
   equipment: initialEquipment,
   walls: initialWalls,
@@ -753,22 +910,51 @@ export function CanvasComponent3D({
   const deleteMultipleEquipment = useLabStore(
     (state) => state.deleteMultipleEquipment,
   )
-  const addWall = useLabStore((state) => state.addWall)
-  const updateMultipleWalls = useLabStore((state) => state.updateMultipleWalls)
-  const deleteMultipleWalls = useLabStore((state) => state.deleteMultipleWalls)
+
+  const addWallNode = useLabStore((state) => state.addWallNode)
+  const addWallSegment = useLabStore((state) => state.addWallSegment)
+  const updateMultipleWallNodes = useLabStore(
+    (state) => state.updateMultipleWallNodes,
+  )
+  const deleteMultipleWallNodes = useLabStore(
+    (state) => state.deleteMultipleWallNodes,
+  )
+  const deleteMultipleWallSegments = useLabStore(
+    (state) => state.deleteMultipleWallSegments,
+  )
+
   const hasUnsavedChanges = useLabStore((state) => state.hasUnsavedChanges)
   const markSaved = useLabStore((state) => state.markSaved)
   const equipmentIds = useLabStore(
     useShallow((state) => Object.keys(state.equipment)),
   )
 
+  const [wallNodes, setWallNodes] = useState<Array<WallNode>>([])
+  const [wallSegments, setWallSegments] = useState<Array<WallSegment>>([])
+
   const initStore = useRef(false)
   useEffect(() => {
     if (!initStore.current) {
       initEquipment(initialEquipment)
+
+      const nodes: Array<WallNode> = []
+      const segments: Array<WallSegment> = []
+
+      ;(initialWalls || []).forEach((w: any) => {
+        const n1 = { id: `WN-${w.id}-1`, x: w.x1, y: w.y1 }
+        const n2 = { id: `WN-${w.id}-2`, x: w.x2, y: w.y2 }
+        nodes.push(n1, n2)
+        segments.push({ id: `WS-${w.id}`, node1Id: n1.id, node2Id: n2.id })
+      })
+
+      setWallNodes(nodes)
+      setWallSegments(segments)
+      useLabStore.getState().initWallNodes(nodes)
+      useLabStore.getState().initWallSegments(segments)
+
       initStore.current = true
     }
-  }, [initialEquipment, initEquipment])
+  }, [initialEquipment, initialWalls, initEquipment])
 
   const [selectedIds, setSelectedIds] = useState<Array<string>>(
     initialSelectedId ? [initialSelectedId] : [],
@@ -777,14 +963,15 @@ export function CanvasComponent3D({
   const [projection, setProjection] = useState<'perspective' | 'orthographic'>(
     'perspective',
   )
-  const [walls, setWalls] = useState<Array<Wall>>(initialWalls)
   const [labels, setLabels] = useState<Array<LabLabel>>([])
   const [mode, setMode] = useState<EditMode>('view')
   const [useSnap, setUseSnap] = useState(true)
   const [viewOverlay, setViewOverlay] = useState<
     'none' | 'heatmap' | 'network'
   >('none')
+
   const [wallStart, setWallStart] = useState<THREE.Vector3 | null>(null)
+  const [wallStartNodeId, setWallStartNodeId] = useState<string | null>(null)
 
   const colors = useThemeColors()
   const navigate = useNavigate()
@@ -793,7 +980,8 @@ export function CanvasComponent3D({
   const { historyIndex, history, saveToHistory, undo, redo } = useLabHistory(
     initEquipment,
     getEquipmentArray,
-    setWalls,
+    setWallNodes,
+    setWallSegments,
     setLabels,
   )
   const {
@@ -804,10 +992,11 @@ export function CanvasComponent3D({
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
-  } = useBoxSelection(mode, walls, setSelectedIds)
+  } = useBoxSelection(mode, wallNodes, setSelectedIds)
 
   const mapControlsRef = useRef<MapControlsImpl>(null)
-  const transformRef = useRef<TransformControlsImpl>(null)
+  const [transformControlNode, setTransformControlNode] =
+    useState<TransformControlsImpl | null>(null)
   const [dummyObj, setDummyObj] = useState<THREE.Group | null>(null)
 
   const dragStartPos = useRef<THREE.Vector3 | null>(null)
@@ -824,10 +1013,22 @@ export function CanvasComponent3D({
     }
   }, [selectedIds, mode])
 
+  useEffect(() => {
+    if (mode !== 'add-wall') {
+      setWallStart(null)
+      setWallStartNodeId(null)
+    }
+    if (['add-rack', 'add-wall', 'add-label'].includes(mode)) {
+      setSelectedIds([])
+    }
+    setSelectStart(null)
+    setSelectEnd(null)
+  }, [mode, setSelectStart, setSelectEnd])
+
   const selectedEquipmentData = useLabStore(
     useShallow((state) =>
       selectedIds
-        .filter((id) => !id.startsWith('WALL'))
+        .filter((id) => !id.startsWith('WN') && !id.startsWith('WS'))
         .map((id) => state.equipment[id])
         .filter(Boolean),
     ),
@@ -844,21 +1045,22 @@ export function CanvasComponent3D({
       y += e.y
       count++
     })
-    walls
-      .filter((w) => selectedIds.includes(w.id))
-      .forEach((w) => {
-        x += (w.x1 + w.x2) / 2
-        y += (w.y1 + w.y2) / 2
+
+    wallNodes
+      .filter((n) => selectedIds.includes(n.id))
+      .forEach((n) => {
+        x += n.x
+        y += n.y
         count++
       })
 
     if (count === 0) return null
     return new THREE.Vector3(x / count / 10, RACK_SIZE.h / 2, y / count / 10)
-  }, [selectedIds, dragDropCount, walls, selectedEquipmentData])
+  }, [selectedIds, dragDropCount, wallNodes, selectedEquipmentData])
 
   const handleDragEnd = useCallback(() => {
     if (!dragStartPos.current) return
-    saveToHistory(walls, labels)
+    saveToHistory(wallNodes, wallSegments, labels)
 
     const dx = dragDeltaRef.current.x
     const dz = dragDeltaRef.current.z
@@ -884,34 +1086,35 @@ export function CanvasComponent3D({
     })
     if (eqUpdates.length > 0) updateMultipleEquipment(eqUpdates)
 
-    const wallIdsToUpdate = selectedIds.filter((id) => id.startsWith('WALL'))
-    if (wallIdsToUpdate.length > 0) {
-      const storeUpdates: Array<{ id: string; updates: Partial<Wall> }> = []
-      setWalls((prev) =>
-        prev.map((w) => {
-          if (!wallIdsToUpdate.includes(w.id)) return w
-          const p1 = new THREE.Vector3(
-            w.x1 / 10 - cx,
+    const nodeIdsToUpdate = selectedIds.filter((id) => id.startsWith('WN'))
+    if (nodeIdsToUpdate.length > 0) {
+      const nodeUpdates = nodeIdsToUpdate
+        .map((id) => wallNodes.find((n) => n.id === id))
+        .filter(Boolean)
+        .map((node) => {
+          tempOffset.set(
+            (node as WallNode).x / 10 - cx,
             0,
-            w.y1 / 10 - cz,
-          ).applyAxisAngle(yAxis, angle)
-          const p2 = new THREE.Vector3(
-            w.x2 / 10 - cx,
-            0,
-            w.y2 / 10 - cz,
-          ).applyAxisAngle(yAxis, angle)
-
-          const updates = {
-            x1: snapToData(cx + p1.x + dx + 100, useSnap),
-            y1: snapToData(cz + p1.z + dz + 100, useSnap),
-            x2: snapToData(cx + p2.x + dx, useSnap),
-            y2: snapToData(cz + p2.z + dz, useSnap),
+            (node as WallNode).y / 10 - cz,
+          )
+          tempOffset.applyAxisAngle(yAxis, angle)
+          return {
+            id: (node as WallNode).id,
+            updates: {
+              x: snapToData(cx + tempOffset.x + dx, useSnap),
+              y: snapToData(cz + tempOffset.z + dz, useSnap),
+            },
           }
-          storeUpdates.push({ id: w.id, updates })
-          return { ...w, ...updates }
+        })
+
+      setWallNodes((prev) =>
+        prev.map((n) => {
+          const update = nodeUpdates.find((u) => u.id === n.id)
+          if (update) return { ...n, ...update.updates }
+          return n
         }),
       )
-      updateMultipleWalls(storeUpdates)
+      updateMultipleWallNodes(nodeUpdates)
     }
 
     dragStartPos.current = null
@@ -925,14 +1128,14 @@ export function CanvasComponent3D({
     useSnap,
     saveToHistory,
     updateMultipleEquipment,
-    updateMultipleWalls,
-    walls,
+    updateMultipleWallNodes,
+    wallNodes,
+    wallSegments,
     labels,
   ])
 
   useEffect(() => {
-    const controls = transformRef.current
-    if (controls && dummyObj) {
+    if (transformControlNode && dummyObj) {
       const onDragChange = (e: any) => {
         if (mapControlsRef.current) mapControlsRef.current.enabled = !e.value
         if (e.value) {
@@ -942,19 +1145,12 @@ export function CanvasComponent3D({
           handleDragEnd()
         }
       }
-      const eventDispatcher = controls as any
+      const eventDispatcher = transformControlNode as any
       eventDispatcher.addEventListener('dragging-changed', onDragChange)
       return () =>
         eventDispatcher.removeEventListener('dragging-changed', onDragChange)
     }
-  }, [dummyObj, handleDragEnd])
-
-  useEffect(() => {
-    if (mode === 'add-rack' || mode === 'add-wall' || mode === 'add-label')
-      setSelectedIds([])
-    setSelectStart(null)
-    setSelectEnd(null)
-  }, [mode, setSelectStart, setSelectEnd])
+  }, [transformControlNode, dummyObj, handleDragEnd])
 
   const handleSelect = useCallback(
     (id: string | null, shiftKey: boolean = false) => {
@@ -962,15 +1158,37 @@ export function CanvasComponent3D({
         setSelectedIds([])
         return
       }
-      setSelectedIds((prev) =>
-        shiftKey
-          ? prev.includes(id)
-            ? prev.filter((i) => i !== id)
-            : [...prev, id]
-          : [id],
-      )
 
-      if (!shiftKey && mode === 'view' && !id.startsWith('WALL')) {
+      let idsToSelect = [id]
+
+      if (id.startsWith('WN')) {
+        const targetNode = wallNodes.find((n) => n.id === id)
+        if (targetNode) {
+          const overlappingNodes = wallNodes.filter(
+            (n) => n.x === targetNode.x && n.y === targetNode.y,
+          )
+          idsToSelect = overlappingNodes.map((n) => n.id)
+        }
+      }
+
+      setSelectedIds((prev) => {
+        if (shiftKey) {
+          const isSelected = prev.includes(id)
+          if (isSelected) {
+            return prev.filter((i) => !idsToSelect.includes(i))
+          } else {
+            return Array.from(new Set([...prev, ...idsToSelect]))
+          }
+        }
+        return idsToSelect
+      })
+
+      if (
+        !shiftKey &&
+        mode === 'view' &&
+        !id.startsWith('WN') &&
+        !id.startsWith('WS')
+      ) {
         navigate({
           to: '/map',
           search: (prev: any) => ({
@@ -982,7 +1200,7 @@ export function CanvasComponent3D({
         })
       }
     },
-    [navigate, mode],
+    [navigate, mode, wallNodes],
   )
 
   const handleGridClick = (e: ThreeEvent<MouseEvent>) => {
@@ -1007,7 +1225,7 @@ export function CanvasComponent3D({
       0,
       Math.round(e.point.z),
     )
-    saveToHistory(walls, labels)
+    saveToHistory(wallNodes, wallSegments, labels)
 
     if (mode === 'add-rack') {
       addEquipment({
@@ -1020,19 +1238,53 @@ export function CanvasComponent3D({
       } as any)
       setMode('view')
     } else if (mode === 'add-wall') {
-      if (!wallStart) setWallStart(pt)
-      else {
-        const newWall = {
-          id: `WALL-${Date.now()}`,
-          x1: wallStart.x * 10,
-          y1: wallStart.z * 10,
-          x2: pt.x * 10,
-          y2: pt.z * 10,
+      const clickedPt = new THREE.Vector2(pt.x * 10, pt.z * 10)
+      const targetNode = wallNodes.find(
+        (n) => new THREE.Vector2(n.x, n.y).distanceTo(clickedPt) < 30,
+      )
+
+      if (!wallStart) {
+        let startNodeId
+        if (targetNode) {
+          startNodeId = targetNode.id
+          setWallStart(
+            new THREE.Vector3(targetNode.x / 10, 0, targetNode.y / 10),
+          )
+        } else {
+          startNodeId = `WN-${Date.now()}`
+          const newNode = { id: startNodeId, x: pt.x * 10, y: pt.z * 10 }
+          setWallNodes((prev) => [...prev, newNode])
+          addWallNode(newNode)
+          setWallStart(pt)
         }
-        setWalls([...walls, newWall])
-        addWall(newWall)
-        setWallStart(null)
-        setMode('view')
+        setWallStartNodeId(startNodeId)
+      } else {
+        let endNodeId
+        let endPt
+
+        if (targetNode) {
+          endNodeId = targetNode.id
+          endPt = new THREE.Vector3(targetNode.x / 10, 0, targetNode.y / 10)
+        } else {
+          endNodeId = `WN-${Date.now()}`
+          const newNode = { id: endNodeId, x: pt.x * 10, y: pt.z * 10 }
+          setWallNodes((prev) => [...prev, newNode])
+          addWallNode(newNode)
+          endPt = pt
+        }
+
+        if (wallStartNodeId !== endNodeId) {
+          const newSeg = {
+            id: `WS-${Date.now()}`,
+            node1Id: wallStartNodeId!,
+            node2Id: endNodeId,
+          }
+          setWallSegments((prev) => [...prev, newSeg])
+          addWallSegment(newSeg)
+
+          setWallStart(endPt)
+          setWallStartNodeId(endNodeId)
+        }
       }
     } else if (mode === 'add-label') {
       const text = prompt('Label Text:', 'Zone A')
@@ -1056,12 +1308,27 @@ export function CanvasComponent3D({
   const handleSaveToBackend = () => setTimeout(() => markSaved(), 500)
 
   const deleteSelection = () => {
-    saveToHistory(walls, labels)
-    const wallIds = selectedIds.filter((id) => id.startsWith('WALL'))
-    const eqIds = selectedIds.filter((id) => !id.startsWith('WALL'))
+    saveToHistory(wallNodes, wallSegments, labels)
+    const eqIds = selectedIds.filter(
+      (id) => !id.startsWith('WN') && !id.startsWith('WS'),
+    )
+    const nodeIds = selectedIds.filter((id) => id.startsWith('WN'))
+    const segIds = selectedIds.filter((id) => id.startsWith('WS'))
+
+    const orphanedSegs = wallSegments
+      .filter((s) => nodeIds.includes(s.node1Id) || nodeIds.includes(s.node2Id))
+      .map((s) => s.id)
+
+    const allSegIdsToDelete = Array.from(new Set([...segIds, ...orphanedSegs]))
+
     deleteMultipleEquipment(eqIds)
-    deleteMultipleWalls(wallIds)
-    setWalls((prev) => prev.filter((w) => !selectedIds.includes(w.id)))
+    deleteMultipleWallNodes(nodeIds)
+    deleteMultipleWallSegments(allSegIdsToDelete)
+
+    setWallNodes((prev) => prev.filter((n) => !nodeIds.includes(n.id)))
+    setWallSegments((prev) =>
+      prev.filter((s) => !allSegIdsToDelete.includes(s.id)),
+    )
     setSelectedIds([])
   }
 
@@ -1075,7 +1342,7 @@ export function CanvasComponent3D({
         <ViewSettings
           canUndo={historyIndex >= 0}
           canRedo={historyIndex < history.length - 1}
-          onUndo={() => undo(walls, labels)}
+          onUndo={() => undo(wallNodes, wallSegments, labels)}
           onRedo={redo}
           viewOverlay={viewOverlay}
           setViewOverlay={setViewOverlay}
@@ -1238,7 +1505,7 @@ export function CanvasComponent3D({
                     />
                     {dummyObj && dummyObj.parent && (
                       <TransformControls
-                        ref={transformRef}
+                        ref={setTransformControlNode}
                         object={dummyObj}
                         mode={mode === 'rotate' ? 'rotate' : 'translate'}
                         showX={mode !== 'rotate'}
@@ -1287,26 +1554,93 @@ export function CanvasComponent3D({
                     dragDeltaRef={dragDeltaRef}
                     dragDeltaRotRef={dragDeltaRotRef}
                     onSelect={handleSelect}
-                    saveToHistory={() => saveToHistory(walls, labels)}
+                    saveToHistory={() =>
+                      saveToHistory(wallNodes, wallSegments, labels)
+                    }
                   />
                 ))}
               </Instances>
 
-              {walls.map((w: Wall) => (
-                <WallInstance
-                  key={w.id}
-                  data={w}
+              {wallNodes.map((n) => (
+                <WallNodeRenderer
+                  key={n.id}
+                  node={n}
                   colors={colors}
                   mode={mode}
-                  isSelected={selectedIds.includes(w.id)}
+                  isSelected={selectedIds.includes(n.id)}
                   groupCenter={groupCenter}
                   dragDeltaRef={dragDeltaRef}
                   dragDeltaRotRef={dragDeltaRotRef}
                   onSelect={handleSelect}
-                  onDelete={() => {
-                    saveToHistory(walls, labels)
-                    setWalls((prev) => prev.filter((item) => item.id !== w.id))
-                    deleteMultipleWalls([w.id])
+                  onDelete={(id) => {
+                    saveToHistory(wallNodes, wallSegments, labels)
+                    const orphaned = wallSegments
+                      .filter((s) => s.node1Id === id || s.node2Id === id)
+                      .map((s) => s.id)
+                    deleteMultipleWallNodes([id])
+                    deleteMultipleWallSegments(orphaned)
+                    setWallNodes((prev) =>
+                      prev.filter((node) => node.id !== id),
+                    )
+                    setWallSegments((prev) =>
+                      prev.filter((s) => !orphaned.includes(s.id)),
+                    )
+                  }}
+                  onDrawConnect={(node) => {
+                    if (mode === 'add-wall') {
+                      saveToHistory(wallNodes, wallSegments, labels)
+                      if (!wallStart) {
+                        setWallStart(
+                          new THREE.Vector3(node.x / 10, 0, node.y / 10),
+                        )
+                        setWallStartNodeId(node.id)
+                      } else if (
+                        wallStartNodeId &&
+                        wallStartNodeId !== node.id
+                      ) {
+                        const newSeg = {
+                          id: `WS-${Date.now()}`,
+                          node1Id: wallStartNodeId,
+                          node2Id: node.id,
+                        }
+                        setWallSegments((prev) => [...prev, newSeg])
+                        addWallSegment(newSeg)
+                        setWallStart(
+                          new THREE.Vector3(node.x / 10, 0, node.y / 10),
+                        )
+                        setWallStartNodeId(node.id)
+                      }
+                    }
+                  }}
+                />
+              ))}
+
+              {wallSegments.map((s) => (
+                <WallSegmentRenderer
+                  key={s.id}
+                  segment={s}
+                  node1={wallNodes.find((n) => n.id === s.node1Id)}
+                  node2={wallNodes.find((n) => n.id === s.node2Id)}
+                  colors={colors}
+                  mode={mode}
+                  isNode1Selected={selectedIds.includes(s.node1Id)}
+                  isNode2Selected={selectedIds.includes(s.node2Id)}
+                  groupCenter={groupCenter}
+                  dragDeltaRef={dragDeltaRef}
+                  dragDeltaRotRef={dragDeltaRotRef}
+                  onSelectSegment={(id1, id2, shift) => {
+                    setSelectedIds((prev) =>
+                      shift
+                        ? Array.from(new Set([...prev, id1, id2]))
+                        : [id1, id2],
+                    )
+                  }}
+                  onDelete={(id) => {
+                    saveToHistory(wallNodes, wallSegments, labels)
+                    deleteMultipleWallSegments([id])
+                    setWallSegments((prev) =>
+                      prev.filter((seg) => seg.id !== id),
+                    )
                   }}
                 />
               ))}
@@ -1323,7 +1657,13 @@ export function CanvasComponent3D({
                   </Text>
                 </Billboard>
               ))}
-              <GhostPreview mode={mode} wallStart={wallStart} />
+
+              <GhostPreview
+                mode={mode}
+                wallStart={wallStart}
+                wallNodes={wallNodes}
+              />
+
               <ContactShadows
                 opacity={0.4}
                 scale={1000}
