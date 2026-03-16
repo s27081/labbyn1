@@ -106,6 +106,20 @@ export const useUpdateMachineMutation = (machineId: string | number) => {
   })
 }
 
+export const useDeleteMachineMutation = (machineId: string | number) => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ['delete-machine'],
+    mutationFn: () =>
+      api.delete(PATHS.DETAIL(machineId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['machines'] })
+    },
+  })
+}
+
+
 export async function autoDiscoverMutation(
   machineId: string | number,
   formData: AutoDiscoverPayload,

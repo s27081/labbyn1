@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useSuspenseQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useStore } from '@tanstack/react-form'
 import {
@@ -38,7 +38,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { machineSpecInfoQueryOptions } from '@/integrations/machines/machines.query'
 import { TextField } from '@/components/text-field'
-import { useUpdateMachineMutation } from '@/integrations/machines/machines.mutation'
+import { useDeleteMachineMutation, useUpdateMachineMutation } from '@/integrations/machines/machines.mutation'
 import { SubPageTemplate } from '@/components/subpage-template'
 import { SubpageCard } from '@/components/subpage-card'
 import { TagList } from '@/components/tag-list'
@@ -55,7 +55,7 @@ export const Route = createFileRoute('/_auth/machines/$machineId')({
 })
 
 function MachineDetailsPage() {
-
+    const router = useRouter()
   const { machineId } = Route.useParams()
   const { data: machine } = useSuspenseQuery(
     machineSpecInfoQueryOptions(machineId),
@@ -66,6 +66,7 @@ const queryClient = useQueryClient()
     const { data: racks } = useSuspenseQuery(racksBaseListQueryOptions)
 
   const updateMachine = useUpdateMachineMutation(machineId)
+  const deleteMachine = useDeleteMachineMutation(machineId)
   const { mutate: createShelf } = useCreateShelfMutation();
   
   const handleShelfCreation = (rackId: number) => {
@@ -127,7 +128,6 @@ const queryClient = useQueryClient()
   const [selectedTeam, setSelectedTeam] = useState<number | undefined>(machine.team_id);
 const [selectedRoom, setSelectedRoom] = useState<number | undefined>(machine.room_id); 
 const [selectedRack, setSelectedRack] = useState<number | undefined>(machine.rack_id);
-  console.log(machine);
   
     useEffect(() => {
   if (isEditing) {
@@ -171,17 +171,18 @@ const [selectedRack, setSelectedRack] = useState<number | undefined>(machine.rac
           setIsEditing(false)
         },
         onStartEdit: () => setIsEditing(true),
-        onDelete: () => {},
-        // deleteMachine.mutate({
-        //  onSuccess: () => {
-        //    toast.success('Machine deleted successfully')
-        //    router.history.back()
-        //  },
-        //  onError: (error: Error) => {
-        //    toast.error('Operation failed', { description: error.message })
-        //  },
-        // }),
-      }}
+        onDelete: () => {
+        deleteMachine.mutate({}, {
+         onSuccess: () => {
+           toast.success('Machine deleted successfully')
+           router.history.back()
+         },
+         onError: (error: Error) => {
+           toast.error('Operation failed', { description: error.message })
+         },
+        });
+      },
+    }}
       content={
         <>
           <AutoDiscovertDialog
