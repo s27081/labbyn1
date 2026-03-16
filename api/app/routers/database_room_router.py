@@ -2,18 +2,20 @@
 
 from typing import List
 from app.database import get_db
-from app.db.models import (
-    Rooms,
-)
+from app.db.models import Rooms, Tags, Rack, Shelf
 from app.db.schemas import (
     RoomsCreate,
     RoomsResponse,
     RoomsUpdate,
+    RoomDashboardResponse,
+    RoomDetailsResponse,
 )
 from app.utils.redis_service import acquire_lock
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth.dependencies import RequestContext
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from app.utils.database_service import resolve_target_team_id
+
 
 router = APIRouter()
 
@@ -36,11 +38,18 @@ def create_room(
     :return: Room object
     """
     ctx.require_group_admin()
-    data = room_data.model_dump()
-    if not ctx.is_admin:
-        data["team_id"] = ctx.team_id
+    tag_ids = room_data.tag_ids if hasattr(room_data, "tag_ids") else []
 
-    obj = Rooms(**room_data.model_dump())
+    effective_team_id = resolve_target_team_id(ctx, getattr(room_data, "team_id", None))
+
+    obj = Rooms(
+        name=room_data.name, room_type=room_data.room_type, team_id=effective_team_id
+    )
+
+    if tag_ids:
+        tags = db.query(Tags).filter(Tags.id.in_(tag_ids)).all()
+        obj.tags = tags
+
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -54,9 +63,110 @@ def get_rooms(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
     :param db: Active database session
     :return: List of all rooms
     """
-    query = db.query(Rooms)
+    ctx.require_user()
+    query = db.query(Rooms).options(joinedload(Rooms.tags))
     query = ctx.team_filter(query, Rooms)
     return query.all()
+
+
+@router.get(
+    "/db/rooms/dashboard", response_model=List[RoomDashboardResponse], tags=["Rooms"]
+)
+def get_rooms_dashboard(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
+    """
+    Fetch all rooms with rack count and map link for dashboard
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: Room object
+    """
+    ctx.require_user()
+    query = db.query(Rooms).options(
+        joinedload(Rooms.racks), joinedload(Rooms.layouts), joinedload(Rooms.team)
+    )
+    query = ctx.team_filter(query, Rooms)
+    rooms = query.all()
+
+    results = []
+    for r in rooms:
+        results.append(
+            {
+                "id": r.id,
+                "name": r.name,
+                "team_name": r.team.name,
+                "rack_count": len(r.racks),
+                "map_link": f"/map/room/{r.id}",
+            }
+        )
+    return results
+
+
+@router.get(
+    "/db/rooms/{room_id}/details", response_model=RoomDetailsResponse, tags=["Rooms"]
+)
+def get_room_details(
+    room_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+):
+    """
+    Fetch specific room by ID with nested racks, shelves and machines for dashboard details
+    :param room_id: Room ID
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: Room object
+    """
+    ctx.require_user()
+    query = (
+        db.query(Rooms)
+        .options(
+            joinedload(Rooms.tags),
+            joinedload(Rooms.layouts),
+            joinedload(Rooms.racks).joinedload(Rack.tags),
+            joinedload(Rooms.racks).joinedload(Rack.shelves).joinedload(Shelf.machines),
+        )
+        .filter(Rooms.id == room_id)
+    )
+
+    query = ctx.team_filter(query, Rooms)
+    room = query.first()
+
+    if not room:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    racks_list = []
+    for rack in room.racks:
+        machines_in_rack = []
+        for shelf in rack.shelves:
+            for m in shelf.machines:
+                machines_in_rack.append(
+                    {
+                        "id": str(m.id),
+                        "hostname": m.name,
+                        "ip_address": m.ip_address,
+                        "mac_address": m.mac_address,
+                    }
+                )
+
+        racks_list.append(
+            {
+                "id": rack.id,
+                "name": rack.name,
+                "tags": [
+                    {
+                        "name": getattr(t, "name", "Unnamed"),
+                        "color": getattr(t, "color", "red"),
+                    }
+                    for t in (rack.tags or [])
+                ],
+                "machines": machines_in_rack,
+            }
+        )
+
+    return {
+        "id": room.id,
+        "name": room.name,
+        "tags": [t.name for t in room.tags],
+        "map_link": f"/map/room/{room.id}",
+        "racks": racks_list,
+    }
 
 
 @router.get("/db/rooms/{room_id}", response_model=RoomsResponse, tags=["Rooms"])
@@ -67,8 +177,10 @@ def get_room_by_id(
     Fetch specific room by ID
     :param room_id: Room ID
     :param db: Active database session
+    :param ctx: Request context for user and team info
     :return: Room object
     """
+    ctx.require_user()
     query = db.query(Rooms).filter(Rooms.id == room_id)
     query = ctx.team_filter(query, Rooms)
     room = query.first()
@@ -79,7 +191,7 @@ def get_room_by_id(
     return room
 
 
-@router.put("/db/rooms/{room_id}", response_model=RoomsResponse, tags=["Rooms"])
+@router.patch("/db/rooms/{room_id}", response_model=RoomsResponse, tags=["Rooms"])
 async def update_room(
     room_id: int,
     room_data: RoomsUpdate,
@@ -91,6 +203,7 @@ async def update_room(
     :param room_id: Room ID
     :param room_data: Room data schema
     :param db: Active database session
+    :param ctx: Request context for user and team info
     :return: Updated Room
     """
     ctx.require_group_admin()
@@ -105,9 +218,21 @@ async def update_room(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Room not found or access denied",
             )
-        data = room_data.model_dump(exlude_unset=True)
-        if not ctx.is_admin and "team_id" in data:
-            data["team_id"] = ctx.team_id
+
+        if room_data.tag_ids is not None:
+            tags = db.query(Tags).filter(Tags.id.in_(room_data.tag_ids)).all()
+            room.tags = tags
+
+        data = room_data.model_dump(exlude_unset=True, exclude={"tag_ids"})
+        if "team_id" in data and not ctx.is_admin:
+            if data["team_id"] not in ctx.team_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Cannot assign room to a team you don't belong to",
+                )
+        if room.data.tag_ids is not None:
+            tags = db.query(Tags).filter(Tags.id.in_(room_data.tag_ids)).all()
+            room.tags = tags
         for k, v in room_data.model_dump(exclude_unset=True).items():
             setattr(room, k, v)
         db.commit()
@@ -125,6 +250,7 @@ async def delete_room(
     Delete Room
     :param room_id: Room ID
     :param db: Active database session
+    :param ctx: Request context for user and team info
     :return: None
     """
     ctx.require_group_admin()

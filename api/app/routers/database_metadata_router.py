@@ -34,6 +34,7 @@ def create_metadata(
     :param ctx: Request context for user and team info
     :return: Metadata object
     """
+    ctx.require_user()
     obj = Metadata(**meta_data.model_dump())
     db.add(obj)
     db.commit()
@@ -49,9 +50,10 @@ def get_all_metadata(db: Session = Depends(get_db), ctx: RequestContext = Depend
     :param ctx: Request context for user and team info
     :return: List of Metadata
     """
-    query = db.query(Machines)
+    ctx.require_user()
+    query = db.query(Metadata)
     if not ctx.is_admin:
-        query = query.join(Machines).filter(Machines.team_id == ctx.team_id)
+        query = query.join(Machines).filter(Machines.team_id.in_(ctx.team_ids))
     return query.all()
 
 
@@ -68,9 +70,10 @@ def get_metadata(
     :param ctx: Request context for user and team info
     :return: Metadata object
     """
+    ctx.require_user()
     query = db.query(Metadata).filter(Metadata.id == meta_id)
     if not ctx.is_admin:
-        query = query.join(Machines).filter(Machines.team_id == ctx.team_id)
+        query = query.join(Machines).filter(Machines.team_id.in_(ctx.team_ids))
     obj = query.first()
     if not obj:
         raise HTTPException(
@@ -80,7 +83,7 @@ def get_metadata(
     return obj
 
 
-@router.put(
+@router.patch(
     "/db/metadata/{meta_id}", response_model=MetadataResponse, tags=["Metadata"]
 )
 async def update_metadata(
@@ -97,10 +100,11 @@ async def update_metadata(
     :param ctx: Request context for user and team info
     :return: Updated Metadata
     """
+    ctx.require_user()
     async with acquire_lock(f"meta_lock:{meta_id}"):
         query = db.query(Metadata).filter(Metadata.id == meta_id)
         if not ctx.is_admin:
-            query = query.join(Machines).filter(Machines.team_id == ctx.team_id)
+            query = query.join(Machines).filter(Machines.team_id.in_(ctx.team_ids))
         obj = query.first()
         if not obj:
             raise HTTPException(
@@ -127,10 +131,11 @@ async def delete_metadata(
     :param ctx: Request context for user and team info
     :return: None
     """
+    ctx.require_user()
     async with acquire_lock(f"meta_lock:{meta_id}"):
         query = db.query(Metadata).filter(Metadata.id == meta_id)
         if not ctx.is_admin:
-            query = query.join(Machines).filter(Machines.team_id == ctx.team_id)
+            query = query.join(Machines).filter(Machines.team_id.in_(ctx.team_ids))
         obj = query.first()
 
         if not obj:

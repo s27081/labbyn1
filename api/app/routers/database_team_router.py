@@ -2,12 +2,7 @@
 
 from typing import List
 from app.database import get_db
-from app.db.models import (
-    Teams,
-    Inventory,
-    Rack,
-    Shelf,
-)
+from app.db.models import Teams, Inventory, Rack, Shelf, UsersTeams, Rooms
 from app.db.schemas import (
     TeamsCreate,
     TeamsResponse,
@@ -31,101 +26,129 @@ def format_team_output(team: Teams):
     :param team: Team object to format
     :return: Formatted team dictionary with admin names and member details
     """
-    team_admin = next((u for u in team.users if u.id == team.team_admin_id), None)
-
-    if team_admin:
-        admin_display = f"{team_admin.name} {team_admin.surname}"
-        admin_info = {
-            "first_name": team_admin.name,
-            "last_name": team_admin.surname,
-            "login": team_admin.login,
-            "email": team_admin.email,
+    group_admins = [m.user for m in team.users if m.is_group_admin]
+    admin_display = (
+        ", ".join([f"{a.name} {a.surname}" for a in group_admins])
+        if group_admins
+        else "No admin assigned"
+    )
+    admins_info = [
+        {
+            "id": a.id,
+            "full_name": f"{a.name} {a.surname}",
+            "login": a.login,
+            "user_type": str(a.user_type),
+            "email": a.email,
+            "is_group_admin": True,
+            "user_link": f"/users/{a.id}",
         }
-    else:
-        admin_display = "No admin assigned"
-        admin_info = None
+        for a in group_admins
+    ]
 
     return {
         "id": team.id,
         "name": team.name,
-        "team_admin_name": admin_display,
-        "admin_details": admin_info,
+        "admins": admins_info,
         "member_count": len(team.users),
         "members": [
             {
-                "id": u.id,
-                "full_name": f"{u.name} {u.surname}",
-                "login": u.login,
-                "user_type": str(u.user_type),
-                "email": u.email,
-                "user_link": f"/users/{u.id}",
+                "id": m.user.id,
+                "full_name": f"{m.user.name} {m.user.surname}",
+                "login": m.user.login,
+                "user_type": str(m.user.user_type),
+                "email": m.user.email,
+                "is_group_admin": m.is_group_admin,
+                "user_link": f"/users/{m.user.id}",
             }
-            for u in team.users
+            for m in team.users
         ],
     }
 
 
 def format_team_full_detail(team: Teams):
-    team_admin = next((u for u in team.users if u.id == team.team_admin_id), None)
-    admin_info = {
-        "full_name": f"{team_admin.name} {team_admin.surname}" if team_admin else "N/A",
-        "login": team_admin.login if team_admin else "N/A",
-        "email": team_admin.email if team_admin else "N/A",
-    }
+    """
+    Format team output to include detailed information about admins, members, racks, machines, and inventory.
+    :param team: team object to format
+    :return: formatted team dictionary with detailed information about admins, members, racks, machines, and inventory
+    """
+    group_admins = [m.user for m in team.users if m.is_group_admin]
+
+    admins_info = [
+        {
+            "full_name": f"{a.name} {a.surname}",
+            "login": a.login,
+            "email": a.email,
+        }
+        for a in group_admins
+    ]
 
     sorted_machines = []
-    placed_machine_ids = set()
-
     for rack in team.racks:
         for shelf in sorted(rack.shelves, key=lambda s: s.order):
             for machine in shelf.machines:
                 sorted_machines.append(
                     {
+                        "id": machine.id,
                         "name": machine.name,
                         "ip_address": machine.ip_address,
                         "mac_address": machine.mac_address,
                         "team_name": team.name,
                         "rack_name": rack.name,
                         "shelf_order": shelf.order,
-                        # TODO: add tags after CPU and Disk merge
+                        "tags": [
+                            {
+                                "name": getattr(t, "name", "Unnamed"),
+                                "color": getattr(t, "color", "red"),
+                            }
+                            for t in (machine.tags or [])
+                        ],
                     }
                 )
 
-    unplaced_machines = [m for m in team.machines if m.id not in placed_machine_ids]
-
-    for machine in unplaced_machines:
-        sorted_machines.append(
-            {
-                "name": machine.name,
-                "ip_address": machine.ip_address,
-                "mac_address": machine.mac_address,
-                "team_name": team.name,
-                "rack_name": "Unplaced",
-                "shelf_order": 0,
-            }
-        )
+    placed_machine_names = {m["name"] for m in sorted_machines}
+    for machine in team.machines:
+        if machine.name not in placed_machine_names:
+            sorted_machines.append(
+                {
+                    "id": machine.id,
+                    "name": machine.name,
+                    "ip_address": machine.ip_address,
+                    "mac_address": machine.mac_address,
+                    "team_name": team.name,
+                    "rack_name": "Unplaced",
+                    "shelf_order": 0,
+                }
+            )
 
     return {
         "id": team.id,
         "name": team.name,
-        "admin": admin_info,
+        "admins": admins_info,
         "members": [
             {
-                "id": u.id,
-                "full_name": f"{u.name} {u.surname}",
-                "login": u.login,
-                "email": u.email,
-                "user_type": str(u.user_type),
-                "user_link": f"/users/{u.id}",
+                "id": m.user.id,
+                "full_name": f"{m.user.name} {m.user.surname}",
+                "login": m.user.login,
+                "email": m.user.email,
+                "user_type": str(m.user.user_type),
+                "is_group_admin": m.is_group_admin,
+                "user_link": f"/users/{m.user.id}",
             }
-            for u in team.users
+            for m in team.users
         ],
         "racks": [
             {
+                "id": r.id,
                 "name": r.name,
                 "team_name": team.name,
                 "map_link": f"/map/{r.room_id}",
-                "tags": [tag.name for tag in r.tags],
+                "tags": [
+                    {
+                        "name": getattr(t, "name", "Unnamed"),
+                        "color": getattr(t, "color", "red"),
+                    }
+                    for t in (r.tags or [])
+                ],
                 "machines_count": sum(len(shelf.machines) for shelf in r.shelves),
             }
             for r in team.racks
@@ -133,6 +156,7 @@ def format_team_full_detail(team: Teams):
         "machines": sorted_machines,
         "inventory": [
             {
+                "id": i.id,
                 "name": i.name,
                 "quantity": i.quantity,
                 "team_name": team.name,
@@ -168,6 +192,11 @@ def create_team(
     ctx.require_admin()
     obj = Teams(**team_data.model_dump())
     db.add(obj)
+    db.flush()
+
+    virtual_lab = Rooms(name="virtual", room_type="virtual", team_id=obj.id)
+    db.add(virtual_lab)
+
     db.commit()
     db.refresh(obj)
     return obj
@@ -180,6 +209,7 @@ def get_teams(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
     :param db: Active database session
     :return: List of all teams
     """
+    ctx.require_user()
     return db.query(Teams).all()
 
 
@@ -194,7 +224,11 @@ def get_team_info(db: Session = Depends(get_db), ctx: RequestContext = Depends()
     :return: Detailed team information with admin names and member details
     """
     ctx.require_user()
-    teams = db.query(Teams).options(joinedload(Teams.users)).all()
+    teams = (
+        db.query(Teams)
+        .options(joinedload(Teams.users).joinedload(UsersTeams.user))
+        .all()
+    )
     return [format_team_output(t) for t in teams]
 
 
@@ -219,12 +253,11 @@ def get_team_info_by_id(
         db.query(Teams)
         .filter(Teams.id == team_id)
         .options(
-            joinedload(Teams.users),
-            joinedload(Teams.racks),
+            joinedload(Teams.users).joinedload(UsersTeams.user),
+            joinedload(Teams.racks).joinedload(Rack.shelves).joinedload(Shelf.machines),
             joinedload(Teams.inventory).joinedload(Inventory.room),
             joinedload(Teams.inventory).joinedload(Inventory.category),
-            joinedload(Teams.inventory).joinedload(Inventory.machine),
-            joinedload(Teams.racks).joinedload(Rack.shelves).joinedload(Shelf.machines),
+            joinedload(Teams.machines),
         )
         .first()
     )
@@ -245,6 +278,7 @@ def get_team_by_id(
     :param db: Active database session
     :return: Team object
     """
+    ctx.require_user()
     team = db.query(Teams).filter(Teams.id == team_id).first()
     if not team:
         raise HTTPException(
@@ -253,7 +287,7 @@ def get_team_by_id(
     return team
 
 
-@router.put("/db/teams/{team_id}", response_model=TeamsResponse, tags=["Teams"])
+@router.patch("/db/teams/{team_id}", response_model=TeamsResponse, tags=["Teams"])
 async def update_team(
     team_id: int,
     team_data: TeamsUpdate,
@@ -270,18 +304,24 @@ async def update_team(
 
     if not ctx.is_admin:
         ctx.require_group_admin()
-        if team_id != ctx.team_id:
+        membership = (
+            db.query(UsersTeams)
+            .filter(
+                UsersTeams.user_id == ctx.current_user.id,
+                UsersTeams.team_id == team_id,
+                UsersTeams.is_group_admin == True,
+            )
+            .first()
+        )
+        if not membership:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions to update this team",
+                status_code=403, detail="You are not an admin of this team"
             )
 
     async with acquire_lock(f"team_lock:{team_id}"):
         team = db.query(Teams).filter(Teams.id == team_id).first()
         if not team:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
-            )
+            raise HTTPException(404, detail="Team not found")
         for k, v in team_data.model_dump(exclude_unset=True).items():
             setattr(team, k, v)
         db.commit()

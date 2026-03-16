@@ -61,7 +61,7 @@ def test_discovery_flow(
 
     assert machine is not None, f"Machine {test_ip} not found in DB after discovery."
     assert "Ubuntu" in machine.os
-    assert "Intel Test" in machine.cpu
+    assert "Intel Test" in machine.cpus[0].name
 
 
 @pytest.mark.database
@@ -107,15 +107,17 @@ def test_refresh_flow(
     db_session.expire_all()
     updated_machine = db_session.query(Machines).get(machine_id)
     assert updated_machine.os == original_os
-    assert updated_machine.cpu == f"{cpu_name} (4 cores)"
+    assert updated_machine.cpus[0].name == f"{cpu_name} (4 cores)"
 
 
-def test_create_user_simple(test_client, mock_ansible_success):
+def test_create_user_simple(test_client, mock_ansible_success, service_header_sync):
     """Tests the basic execution of the user creation endpoint."""
     payload = {
         "host": "1.1.1.1",
         "extra_vars": {"ansible_user": "v", "ansible_password": "v"},
     }
-    response = test_client.post("/ansible/create_user", json=payload)
+    response = test_client.post(
+        "/ansible/create_user", json=payload, headers=service_header_sync
+    )
     assert response.status_code == 200
     assert response.json()["status"] == "successful"

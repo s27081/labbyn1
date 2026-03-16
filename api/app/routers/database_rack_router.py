@@ -5,22 +5,50 @@ from sqlalchemy.orm import joinedload, Session
 from typing import List, Optional
 
 from app.database import get_db
-from app.db.models import Rack, Shelf, Machines, User, UserType, Rooms, Tags
+from app.db.models import Rack, Shelf, Rooms, Tags, Teams, Machines
 from app.auth.dependencies import RequestContext
 from app.db.schemas import (
     RackCreate,
     RackUpdate,
     RackResponse,
-    ShelfCreate,
-    ShelfUpdate,
-    ShelfResponse,
-    MachineInRackResponse,
+    RackWithOrderedMachinesResponse,
 )
+from app.utils.database_service import resolve_target_team_id
 
-router = APIRouter(tags=["racks"])
+router = APIRouter(tags=["Racks"])
 
 
-@router.get("/db/racks", response_model=List[RackResponse])
+def format_rack_output(rack: Rack):
+    """
+    Format rack output to display machine list ordered
+
+    :param rack: Rack object
+    :return: Formatted rack dict
+    """
+
+    sorted_shelves = sorted(rack.shelves, key=lambda s: s.order or 0)
+    ordered_machines = []
+
+    for shelf in sorted_shelves:
+        ordered_machines.append(shelf.machines)
+
+    team_name = rack.team.name if rack.team else "N/A"
+    rack_link = f"/racks/{rack.id}"
+
+    return {
+        "id": rack.id,
+        "name": rack.name,
+        "team_id": rack.team_id,
+        "layout_id": rack.layout_id,
+        "team_name": team_name,
+        "room_id": rack.room_id,
+        "tags": rack.tags or [],
+        "machines": ordered_machines,
+        "link": rack_link,
+    }
+
+
+@router.get("/db/racks", response_model=List[RackResponse], tags=["Racks"])
 def get_racks(
     room_ids: Optional[List[int]] = Query(None),
     team_ids: Optional[List[int]] = Query(None),
@@ -33,7 +61,10 @@ def get_racks(
     :param ctx: Request context for database and user info
     :return: List of racks with nested structures
     """
+    ctx.require_user()
     query = ctx.db.query(Rack)
+
+    query = ctx.team_filter(query, Rack)
 
     if room_ids:
         query = query.filter(Rack.room_id.in_(room_ids))
@@ -53,7 +84,7 @@ def get_racks(
     return racks
 
 
-@router.get("/db/racks-list")
+@router.get("/db/racks-list", tags=["Racks"])
 def get_racks_list(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
     """
     Returns a simple list of rack names and IDs for dropdowns
@@ -61,13 +92,14 @@ def get_racks_list(db: Session = Depends(get_db), ctx: RequestContext = Depends(
     :param ctx: Request context
     :return: List of dictionaries with id and name
     """
+    ctx.require_user()
     query = db.query(Rack.id, Rack.name)
     racks = ctx.team_filter(query, Rack).all()
 
     return [{"id": r.id, "name": r.name} for r in racks]
 
 
-@router.get("/db/racks/{rack_id}", response_model=RackResponse)
+@router.get("/db/racks/{rack_id}", response_model=RackResponse, tags=["Racks"])
 def get_rack_detail(
     rack_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
 ):
@@ -78,6 +110,7 @@ def get_rack_detail(
     :param ctx: Request context for user and team info
     :return: Detailed rack object
     """
+    ctx.require_user()
     query = db.query(Rack).filter(Rack.id == rack_id)
     rack = (
         ctx.team_filter(query, Rack)
@@ -102,7 +135,10 @@ def get_rack_detail(
 
 
 @router.post(
-    "/db/racks", response_model=RackResponse, status_code=status.HTTP_201_CREATED
+    "/db/racks",
+    response_model=RackResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Racks"],
 )
 def create_rack(
     rack: RackCreate, db: Session = Depends(get_db), ctx: RequestContext = Depends()
@@ -115,18 +151,14 @@ def create_rack(
     :return: Created rack object with names
     """
     ctx.require_user()
-
-    if ctx.is_admin and rack.team_id:
-        effective_team_id = rack.team_id
-    else:
-        effective_team_id = ctx.team_id
+    effective_team_id = resolve_target_team_id(ctx, rack.team_id)
 
     room = db.query(Rooms).filter(Rooms.id == rack.room_id).first()
 
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    if not ctx.is_admin and room.team_id != effective_team_id:
+    if not ctx.is_admin and room.team_id not in ctx.team_ids:
         raise HTTPException(
             status_code=403, detail="Cannot assign rack to a room owned by another team"
         )
@@ -152,7 +184,7 @@ def create_rack(
     return db_rack
 
 
-@router.patch("/db/racks/{rack_id}", response_model=RackResponse)
+@router.patch("/db/racks/{rack_id}", response_model=RackResponse, tags=["Racks"])
 def update_rack(
     rack_id: int,
     rack_data: RackUpdate,
@@ -187,7 +219,7 @@ def update_rack(
             db_rack.tags = new_tags
 
     if "team_id" in update_dict:
-        if not ctx.is_admin and update_dict["team_id"] != ctx.team_id:
+        if not ctx.is_admin and update_dict["team_id"] not in ctx.team_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Cannot reassign rack to another team",
@@ -199,11 +231,10 @@ def update_rack(
         if not room:
             raise HTTPException(status_code=404, detail="New room not found")
 
-        target_team = update_dict.get("team_id", db_rack.team_id)
-        if not ctx.is_admin and room.team_id != target_team:
+        if not ctx.is_admin and room.team_id not in ctx.team_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="New room is owned by another team",
+                detail="Room is owned by another team",
             )
 
     for key, value in update_dict.items():
@@ -218,7 +249,9 @@ def update_rack(
     return db_rack
 
 
-@router.delete("/db/racks/{rack_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/db/racks/{rack_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Racks"]
+)
 def delete_rack(
     rack_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
 ):
@@ -240,6 +273,54 @@ def delete_rack(
             detail="Rack not found or you don't have permission to delete it",
         )
 
+    virtual_room = (
+        db.query(Rooms)
+        .filter(Rooms.team_id == db_rack.team_id, Rooms.room_type == "virtual")
+        .first()
+    )
+    if not virtual_room:
+        raise HTTPException(
+            status_code=500, detail="Virtual lab not found for this team"
+        )
+
+    shelf_ids = [shelf.id for shelf in db_rack.shelves]
+    machines_to_move = db.query(Machines).filter(Machines.shelf_id.in_(shelf_ids)).all()
+
+    for machine in machines_to_move:
+        machine.shelf_id = None
+        machine.localization_id = virtual_room.id
+
     db.delete(db_rack)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/db/racks/rack_info/{rack_id}",
+    response_model=RackWithOrderedMachinesResponse,
+    tags=["Racks"],
+)
+def get_rack_info_by_id(
+    rack_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+):
+    """
+    Fetch detailed information about a specific rack by ID including ordered machine list
+    :param rack_id: Rack ID
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: Rack object
+    """
+    ctx.require_user()
+    rack = (
+        db.query(Rack)
+        .filter(Rack.id == rack_id)
+        .options(
+            joinedload(Rack.team), joinedload(Rack.shelves).joinedload(Shelf.machines)
+        )
+        .first()
+    )
+
+    if not rack:
+        raise HTTPException(status_code=404, detail="Rack not found")
+
+    return format_rack_output(rack)

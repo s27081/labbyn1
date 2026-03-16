@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from enum import Enum
 
 from app.database import get_db
-from app.db.models import Machines, Metadata, Rooms
+from app.db.models import Machines, Metadata, Rooms, Disks, CPUs
 from app.utils.ansible_service import parse_platform_report, run_playbook_task
 
 from app.utils.redis_service import acquire_lock
@@ -50,6 +50,7 @@ class DiscoveryRequest(BaseModel):
     """List of hosts to scan (IP or Hostname)."""
 
     hosts: List[str]
+    target_team_id: Optional[int] = None
     extra_vars: Optional[dict] = {}
 
 
@@ -81,48 +82,53 @@ def verify_machine_ownership(machine_id: int, db: Session, ctx: RequestContext):
 
 
 @router.post("/ansible/create_user")
-async def create_ansible_user(request: HostRequest):
+async def create_ansible_user(request: HostRequest, ctx: RequestContext = Depends()):
     """
     Create Ansible user on a host.
     :param request: HostRequest containing the host IP or hostname
     :return: Success or error message
     """
+    ctx.require_user()
     return await run_playbook_task(
         PLAYBOOK_MAP[AnsiblePlaybook.create_user], request.host, request.extra_vars
     )
 
 
 @router.post("/ansible/scan_platform")
-async def scan_platform(request: HostRequest):
+async def scan_platform(request: HostRequest, ctx: RequestContext = Depends()):
     """
     Gather information about platform.
     :param reqest: HostRequest containing the host IP or hostname
     :return: Success or error message
     """
+    ctx.require_user()
     return await run_playbook_task(
         PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], request.host, request.extra_vars
     )
 
 
 @router.post("/ansible/deploy_agent")
-async def deploy_agent(request: HostRequest):
+async def deploy_agent(request: HostRequest, ctx: RequestContext = Depends()):
     """
     Deploy Node Exporter on a host.
     :param request: HostRequest containing the host IP or hostname
     :return: Success or error message
     """
+    ctx.require_user()
     return await run_playbook_task(
         PLAYBOOK_MAP[AnsiblePlaybook.deploy_agent], request.host, request.extra_vars
     )
 
 
 @router.post("/ansible/setup_agent")
-async def setup_agent(request: HostRequest):
+async def setup_agent(request: HostRequest, ctx: RequestContext = Depends()):
     """
     Workflow endpoint: first create Ansible user (if needed), then deploy Node Exporter.
     :param request: HostRequest containing the host IP or hostname
     :return: Combined results of both steps
     """
+    ctx.require_user()
+
     try:
         user_result = await run_playbook_task(
             PLAYBOOK_MAP[AnsiblePlaybook.create_user], request.host, request.extra_vars
@@ -163,8 +169,27 @@ async def discover_hosts(
     :param db: Active database session
     :return: Summary of created/updated hosts
     """
+    ctx.require_user()
+
     if not request.hosts:
         raise HTTPException(status_code=400, detail="Host list cannot be empty.")
+
+    target_team_id = request.target_team_id
+
+    if not target_team_id:
+        if len(ctx.team_ids) == 1:
+            target_team_id = ctx.team_ids[0]
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Target team ID must be specified for users belonging to multiple teams.",
+            )
+    else:
+        if not ctx.is_admin and target_team_id not in ctx.team_ids:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to assign machines to this team.",
+            )
 
     await run_playbook_task(
         PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], request.hosts, request.extra_vars
@@ -174,12 +199,14 @@ async def discover_hosts(
 
     default_room = (
         db.query(Rooms)
-        .filter(Rooms.name == "virtual", Rooms.team_id == ctx.team_id)
+        .filter(Rooms.name == "virtual", Rooms.team_id == target_team_id)
         .first()
     )
 
     if not default_room:
-        default_room = Rooms(name="virtual", room_type="virtual", team_id=ctx.team_id)
+        default_room = Rooms(
+            name="virtual", room_type="virtual", team_id=target_team_id
+        )
         db.add(default_room)
         db.commit()
         db.refresh(default_room)
@@ -188,25 +215,35 @@ async def discover_hosts(
         try:
             specs = parse_platform_report(host)
 
-            machine = db.query(Machines).filter(Machines.name == host).first()
+            machine = db.query(Machines).filter(Machines.name == host)
+            machine = ctx.team_filter(machine, Machines).first()
 
             if machine:
                 has_changes = False
 
-                if machine.os != specs["os"]:
-                    machine.os = specs["os"]
+                if machine.ip_address != host:
+                    machine.ip_address = host
                     has_changes = True
-                if machine.cpu != specs["cpu"]:
-                    machine.cpu = specs["cpu"]
+
+                for field in ["os", "ram", "mac_address", "ip_address"]:
+                    if getattr(machine, field) != specs.get(field):
+                        setattr(machine, field, specs.get(field))
+                        has_changes = True
+
+                db.query(CPUs).filter(CPUs.machine_id == machine.id).delete()
+                for cpu_data in specs.get("cpus", []):
+                    db.add(CPUs(name=cpu_data["name"], machine_id=machine.id))
                     has_changes = True
-                if machine.ram != specs["ram"]:
-                    machine.ram = specs["ram"]
-                    has_changes = True
-                if machine.disk != specs["disk"]:
-                    machine.disk = specs["disk"]
-                    has_changes = True
-                if machine.mac_address != specs["mac_address"]:
-                    machine.mac_address = specs["mac_address"]
+
+                db.query(Disks).filter(Disks.machine_id == machine.id).delete()
+                for disk_data in specs.get("disks", []):
+                    db.add(
+                        Disks(
+                            name=disk_data["name"],
+                            capacity=disk_data.get("capacity"),
+                            machine_id=machine.id,
+                        )
+                    )
                     has_changes = True
 
                 meta = (
@@ -239,18 +276,29 @@ async def discover_hosts(
 
                 new_machine = Machines(
                     name=host,
-                    team_id=ctx.team_id,
+                    team_id=target_team_id,
                     metadata_id=new_meta.id,
                     localization_id=default_room.id,
                     os=specs["os"],
-                    cpu=specs["cpu"],
                     ram=specs["ram"],
-                    disk=specs["disk"],
                     mac_address=specs["mac_address"],
-                    ip_address=specs["ip_address"],
+                    ip_address=host,
                     added_on=datetime.now(),
                 )
                 db.add(new_machine)
+                db.flush()
+
+                for cpu_data in specs.get("cpus", []):
+                    db.add(CPUs(name=cpu_data["name"], machine_id=new_machine.id))
+
+                for disk_data in specs.get("disks", []):
+                    db.add(
+                        Disks(
+                            name=disk_data["name"],
+                            capacity=disk_data.get("capacity"),
+                            machine_id=new_machine.id,
+                        )
+                    )
                 results.append({"host": host, "status": "created"})
 
         except Exception as e:
@@ -286,9 +334,7 @@ async def refresh_machine_hardware(
         specs = parse_platform_report(host_address)
         machine_fields = [
             "os",
-            "cpu",
             "ram",
-            "disk",
             "mac_address",
             "ip_address",
             "name",
@@ -300,6 +346,22 @@ async def refresh_machine_hardware(
             if getattr(machine, field) != new_value:
                 setattr(machine, field, new_value)
                 has_changes = True
+
+        db.query(CPUs).filter(CPUs.machine_id == machine.id).delete()
+        for cpu_data in specs.get("cpus", []):
+            db.add(CPUs(name=cpu_data["name"], machine_id=machine.id))
+            has_changes = True
+
+        db.query(Disks).filter(Disks.machine_id == machine.id).delete()
+        for disk_data in specs.get("disks", []):
+            db.add(
+                Disks(
+                    name=disk_data["name"],
+                    capacity=disk_data.get("capacity"),
+                    machine_id=machine.id,
+                )
+            )
+            has_changes = True
 
         meta = db.query(Metadata).filter(Metadata.id == machine.metadata_id).first()
         if meta:

@@ -3,18 +3,21 @@
 from typing import List
 
 from app.database import get_db
-from app.db.models import Tags
-from app.db.schemas import (
-    TagsCreate,
-    TagsUpdate,
-    TagsResponse,
-)
+from app.db.models import Tags, Machines, Rack, Rooms, Documentation
+from app.db.schemas import TagsCreate, TagsUpdate, TagsResponse, TagsAssignment
 from app.utils.redis_service import acquire_lock
 from app.auth.dependencies import RequestContext
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 router = APIRouter()
+
+ENTITY_MAP = {
+    "machine": Machines,
+    "rack": Rack,
+    "room": Rooms,
+    "documentation": Documentation,
+}
 
 
 @router.get(
@@ -29,8 +32,63 @@ def get_tags(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
     :param ctx: Request context for user and team info
     :return: List of all tags
     """
+    ctx.require_user()
     query = db.query(Tags).all()
     return query
+
+
+@router.post("/db/tags/assign", status_code=status.HTTP_200_OK, tags=["Tags"])
+async def assign_tag(
+    data: TagsAssignment, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+):
+    ctx.require_user()
+
+    model = ENTITY_MAP.get(data.entity_type.lower())
+    if not model:
+        raise HTTPException(status_code=400, detail="Invalid entity type")
+
+    query = db.query(model).filter(model.id == data.entity_id)
+
+    if data.entity_type.lower() == "documentation":
+        entity = query.first()
+    else:
+        entity = ctx.team_filter(query, model).first()
+
+    if not entity:
+        raise HTTPException(
+            status_code=404, detail=f"{data.entity_type} not found or access denied"
+        )
+
+    tag = db.query(Tags).filter(Tags.id == data.tag_id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    if tag not in entity.tags:
+        entity.tags.append(tag)
+        db.commit()
+
+    return {f"Tag {tag.name} assigned to {data.entity_type}"}
+
+
+@router.post("/db/tags/detach", status_code=status.HTTP_200_OK, tags=["Tags"])
+async def detach_tag(
+    data: TagsAssignment, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+):
+    ctx.require_user()
+
+    model = ENTITY_MAP.get(data.entity_type.lower())
+    entity = db.query(model).filter(model.id == data.entity_id).first()
+
+    if not entity:
+        raise HTTPException(status_code=404, detail="Entity not found")
+
+    tag = db.query(Tags).filter(Tags.id == data.tag_id).first()
+
+    if tag in entity.tags:
+        entity.tags.remove(tag)
+        db.commit()
+
+    return {f"Tag {tag.name} detached from {data.entity_type}"}
 
 
 @router.post(
@@ -51,6 +109,7 @@ def create_tag(
     :param ctx: Request context for user and team info
     :return: New tag item
     """
+    ctx.require_group_admin()
     obj = Tags(**tag_data.model_dump())
     db.add(obj)
     db.commit()
@@ -76,6 +135,7 @@ def get_tag_by_id(
     :param ctx: Request context for user and team info
     :return: Tag object
     """
+    ctx.require_user()
     query = db.query(Tags).filter(Tags.id == tag_id)
     tag = query.first()
     if not tag:
@@ -104,6 +164,7 @@ async def update_tag(
     :param ctx: Request context for user and team info
     :return: Updated tag
     """
+    ctx.require_group_admin()
     async with acquire_lock(f"tag_lock:{tag_id}"):
         query = db.query(Tags).filter(Tags.id == tag_id)
         tag = query.first()
@@ -136,6 +197,7 @@ async def delete_tag(
     :param ctx: Request context for user and team info
     :return: None
     """
+    ctx.require_group_admin()
     async with acquire_lock(f"tag_lock:{tag_id}"):
         query = db.query(Tags).filter(Tags.id == tag_id)
         tag = query.first()

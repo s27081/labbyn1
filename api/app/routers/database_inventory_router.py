@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List
 
 from app.database import get_db
-from app.db.models import Inventory, Rentals, User
+from app.db.models import Inventory, Rentals, User, UsersTeams
 from app.db.schemas import (
     InventoryCreate,
     InventoryResponse,
@@ -15,6 +15,7 @@ from app.utils.redis_service import acquire_lock
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from app.auth.dependencies import RequestContext
+from app.utils.database_service import resolve_target_team_id
 
 router = APIRouter()
 
@@ -38,8 +39,7 @@ def create_item(
     :return: Inventory item
     """
     data = inventory_data.model_dump()
-    if not ctx.is_admin:
-        data["team_id"] = ctx.team_id
+    data["team_id"] = resolve_target_team_id(ctx, data.get("team_id"))
 
     obj = Inventory(**inventory_data.model_dump())
     db.add(obj)
@@ -58,6 +58,7 @@ def get_inventory(db: Session = Depends(get_db), ctx: RequestContext = Depends()
     :param ctx: Request context for user and team info
     :return: List of inventory items
     """
+    ctx.require_user()
     query = db.query(Inventory)
     query = ctx.team_filter(query, Inventory)
     return query.all()
@@ -77,6 +78,7 @@ def get_inventory_details(
     :param ctx: Request context for user and team info
     :return: List of inventory items
     """
+    ctx.require_user()
     query = db.query(Inventory).options(
         joinedload(Inventory.team),
         joinedload(Inventory.room),
@@ -84,7 +86,8 @@ def get_inventory_details(
         joinedload(Inventory.category),
         joinedload(Inventory.rental_history)
         .joinedload(Rentals.user)
-        .joinedload(User.teams),
+        .joinedload(User.teams)
+        .joinedload(UsersTeams.team),
     )
 
     query = ctx.team_filter(query, Inventory)
@@ -97,7 +100,11 @@ def get_inventory_details(
             {
                 "id": r.id,
                 "borrower_name": f"{r.user.name} {r.user.surname}",
-                "borrower_team": r.user.teams.name if r.user.teams else "N/A",
+                "borrower_team": (
+                    ", ".join([ut.team.name for ut in r.user.teams])
+                    if r.user.teams
+                    else "N/A"
+                ),
                 "quantity": r.quantity,
                 "end_date": r.end_date,
             }
@@ -117,7 +124,7 @@ def get_inventory_details(
                 "room_name": item.room.name if item.room else "N/A",
                 "machine_info": item.machine.name if item.machine else "None",
                 "category_name": item.category.name if item.category else "N/A",
-                "location_link": f"room/{item.localization_id}",
+                "location_link": f"/labs/{item.localization_id}",
                 "active_rentals": active_rentals_list,
             }
         )
@@ -148,10 +155,7 @@ def bulk_create_items(
     new_items = []
     for item_data in items_data:
         data = item_data.model_dump()
-
-        if not ctx.is_admin:
-            data["team_id"] = ctx.team_id
-
+        data["team_id"] = resolve_target_team_id(ctx, data.get("team_id"))
         new_items.append(Inventory(**data))
 
     db.add_all(new_items)
@@ -177,6 +181,7 @@ def get_inventory_item_details(
     :param ctx: Request context for user and team info
     :return: List of inventory items
     """
+    ctx.require_user()
     query = (
         db.query(Inventory)
         .filter(Inventory.id == item_id)
@@ -187,7 +192,8 @@ def get_inventory_item_details(
             joinedload(Inventory.category),
             joinedload(Inventory.rental_history)
             .joinedload(Rentals.user)
-            .joinedload(User.teams),
+            .joinedload(User.teams)
+            .joinedload(UsersTeams.team),
         )
     )
 
@@ -203,7 +209,11 @@ def get_inventory_item_details(
         {
             "id": r.id,
             "borrower_name": f"{r.user.name} {r.user.surname}",
-            "borrower_team": r.user.teams.name if r.user.teams else "N/A",
+            "borrower_team": (
+                ", ".join([ut.team.name for ut in r.user.teams])
+                if r.user.teams
+                else "N/A"
+            ),
             "quantity": r.quantity,
             "end_date": r.end_date,
         }
@@ -222,7 +232,7 @@ def get_inventory_item_details(
         "room_name": item.room.name if item.room else "N/A",
         "machine_info": item.machine.name if item.machine else "None",
         "category_name": item.category.name if item.category else "N/A",
-        "location_link": f"room/{item.localization_id}",
+        "location_link": f"/labs/{item.localization_id}",
         "active_rentals": active_rentals_list,
     }
 
@@ -240,6 +250,7 @@ def get_inventory_item(
     :param ctx: Request context for user and team info
     :return: Inventory item
     """
+    ctx.require_user()
     query = db.query(Inventory).filter(Inventory.id == item_id)
     query = ctx.team_filter(query, Inventory)
     item = query.first()
@@ -251,7 +262,7 @@ def get_inventory_item(
     return item
 
 
-@router.put(
+@router.patch(
     "/db/inventory/{item_id}", response_model=InventoryResponse, tags=["Inventory"]
 )
 async def update_item(
@@ -267,6 +278,7 @@ async def update_item(
     :param db: Active database session
     :return: Updated Inventory item
     """
+    ctx.require_user()
     async with acquire_lock(f"inventory_lock:{item_id}"):
         query = db.query(Inventory).filter(Inventory.id == item_id)
         query = ctx.team_filter(query, Inventory)
@@ -276,6 +288,13 @@ async def update_item(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Item not found or access denied",
             )
+        data = item_data.model_dump(exclude_unset=True)
+        if "team_id" in data and not ctx.is_admin:
+            if data["team_id"] not in ctx.team_ids:
+                raise HTTPException(
+                    status_code=403, detail="Access to specified team is denied"
+                )
+
         for k, v in item_data.model_dump(exclude_unset=True).items():
             setattr(item, k, v)
         db.commit()
@@ -297,6 +316,7 @@ async def delete_item(
     :param db: Active database session
     :return: None
     """
+    ctx.require_user()
     async with acquire_lock(f"inventory_lock:{item_id}"):
         query = db.query(Inventory).filter(Inventory.id == item_id)
         query = ctx.team_filter(query, Inventory)
