@@ -21,7 +21,6 @@ import {
   MapControls,
   OrthographicCamera,
   PerspectiveCamera,
-  RoundedBox,
   Text,
   TransformControls,
   useKeyboardControls,
@@ -55,13 +54,263 @@ const glassGeometryBase = new THREE.PlaneGeometry(
   RACK_SIZE.w - 1,
   RACK_SIZE.h - 1,
 )
-const glassMaterialBase = new THREE.MeshStandardMaterial({
-  color: '#FFF',
-  metalness: 0.7,
-  roughness: 0.7,
+const glassMaterialBase = new THREE.MeshPhysicalMaterial({
+  color: '#020202',
+  metalness: 0.9,
+  roughness: 0.1,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.1,
   transparent: true,
-  opacity: 0.6,
+  opacity: 0.35,
   depthWrite: false,
+})
+
+// placeholder texture
+const generateServerTextures = () => {
+  const w = 512
+  const h = 1024
+
+  // Canvas 1: The physical metal chassis and drives
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  canvas.width = w
+  canvas.height = h
+
+  // Canvas 2: ONLY the LEDs (pure black everywhere else)
+  const emissive = document.createElement('canvas')
+  const ctxE = emissive.getContext('2d')!
+  emissive.width = w
+  emissive.height = h
+
+  // Base backgrounds
+  ctx.fillStyle = '#050505'
+  ctx.fillRect(0, 0, w, h)
+  ctxE.fillStyle = '#000000'
+  ctxE.fillRect(0, 0, w, h)
+
+  const slots = 22 // Reduced slots for much higher detail per server
+  const uHeight = h / slots
+
+  for (let i = 0; i < slots; i++) {
+    const y = i * uHeight
+
+    // Gap between servers
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(0, y, w, 4)
+
+    // 15% chance empty slot
+    const rand = Math.random()
+    if (rand < 0.15) continue
+
+    // Server Chassis (Neutral Dark Grays)
+    const chassisColor = Math.random() > 0.5 ? '#111111' : '#1c1c1c'
+    ctx.fillStyle = chassisColor
+    ctx.fillRect(8, y + 4, w - 16, uHeight - 4)
+
+    // Metal Rack Ears (Mounting Brackets)
+    ctx.fillStyle = '#333333'
+    ctx.fillRect(8, y + 4, 20, uHeight - 4) // left ear
+    ctx.fillRect(w - 28, y + 4, 20, uHeight - 4) // right ear
+
+    // --- DRAW SERVER TYPES ---
+    if (rand < 0.5) {
+      // TYPE 1: Storage Array (12 Large Drive Bays)
+      for (let d = 0; d < 12; d++) {
+        const bayX = 40 + d * 34
+        ctx.fillStyle = '#080808' // Deep bay recess
+        ctx.fillRect(bayX, y + 10, 26, uHeight - 16)
+
+        ctx.fillStyle = '#222222' // Drive release handle
+        ctx.fillRect(bayX + 2, y + 12, 22, 6)
+
+        // Drive Activity LED
+        if (Math.random() > 0.2) {
+          const isErr = Math.random() > 0.95
+          const color = isErr ? '#ff1111' : '#00ff44'
+
+          ctx.fillStyle = color
+          ctx.fillRect(bayX + 16, y + Math.floor(uHeight / 2) + 4, 6, 6)
+          ctxE.fillStyle = color
+          ctxE.fillRect(bayX + 16, y + Math.floor(uHeight / 2) + 4, 6, 6)
+        }
+      }
+    } else if (rand < 0.8) {
+      // TYPE 2: Compute Node (Ventilation Grilles + 4 Drives)
+      ctx.fillStyle = '#030303'
+      for (let v = 0; v < 6; v++) {
+        ctx.fillRect(40, y + 12 + v * 5, 220, 3)
+      }
+
+      for (let d = 0; d < 4; d++) {
+        const bayX = 280 + d * 34
+        ctx.fillStyle = '#080808'
+        ctx.fillRect(bayX, y + 10, 26, uHeight - 16)
+        ctx.fillStyle = '#222222'
+        ctx.fillRect(bayX + 2, y + 12, 22, 6)
+
+        if (Math.random() > 0.1) {
+          const color = '#00ff44'
+          ctx.fillStyle = color
+          ctx.fillRect(bayX + 16, y + Math.floor(uHeight / 2) + 4, 6, 6)
+          ctxE.fillStyle = color
+          ctxE.fillRect(bayX + 16, y + Math.floor(uHeight / 2) + 4, 6, 6)
+        }
+      }
+    } else {
+      // TYPE 3: Network Switch
+      ctx.fillStyle = '#080808'
+      ctx.fillRect(40, y + 10, 360, uHeight - 16)
+
+      for (let p = 0; p < 24; p++) {
+        const portX = 46 + p * 14
+        ctx.fillStyle = '#000000'
+        ctx.fillRect(portX, y + 16, 10, 16)
+
+        // Port Link/Activity LED
+        if (Math.random() > 0.3) {
+          const color = Math.random() > 0.5 ? '#00ff44' : '#ffaa00'
+          ctx.fillStyle = color
+          ctx.fillRect(portX + 2, y + 34, 6, 3)
+          ctxE.fillStyle = color
+          ctxE.fillRect(portX + 2, y + 34, 6, 3)
+        }
+      }
+    }
+
+    // --- UNIVERSAL POWER/STATUS PANEL (Right Side) ---
+    const pwrX = w - 60
+
+    // Main Power Button
+    ctx.fillStyle = '#3b82f6'
+    ctx.fillRect(pwrX, y + 16, 12, 12)
+    ctxE.fillStyle = '#3b82f6'
+    ctxE.fillRect(pwrX, y + 16, 12, 12)
+
+    // System Status LED
+    const statColor = Math.random() > 0.9 ? '#ff1111' : '#00ff44'
+    ctx.fillStyle = statColor
+    ctx.fillRect(pwrX + 20, y + 18, 8, 8)
+    ctxE.fillStyle = statColor
+    ctxE.fillRect(pwrX + 20, y + 18, 8, 8)
+  }
+
+  return {
+    map: new THREE.CanvasTexture(canvas),
+    emissiveMap: new THREE.CanvasTexture(emissive),
+  }
+}
+
+const textures = generateServerTextures()
+
+const generateRackBumpMap = () => {
+  const w = 256
+  const h = 512
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  canvas.width = w
+  canvas.height = h
+
+  // Base metal level (Mid-Gray = flat surface)
+  ctx.fillStyle = '#808080'
+  ctx.fillRect(0, 0, w, h)
+
+  // Draw Perforated Ventilation Holes (Black = deep indentations)
+  ctx.fillStyle = '#000000'
+  // Leave a border for the solid metal frame
+  for (let y = 30; y < h - 30; y += 10) {
+    for (let x = 30; x < w - 30; x += 10) {
+      // Offset every other row to create a hexagonal mesh pattern
+      const offsetX = (y / 10) % 2 === 0 ? 0 : 5
+      ctx.beginPath()
+      ctx.arc(x + offsetX, y, 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  // Draw Solid Frame Edges (White = raised edges)
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 20
+  ctx.strokeRect(10, 10, w - 20, h - 20)
+
+  // Draw a back-door vertical split seam
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.moveTo(w / 2, 10)
+  ctx.lineTo(w / 2, h - 10)
+  ctx.stroke()
+
+  const texture = new THREE.CanvasTexture(canvas)
+
+  // Allow the texture to repeat cleanly across the 3D box faces
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+
+  // Scale the texture wrapping so the holes look appropriately sized on the sides vs top
+  texture.repeat.set(1, 2)
+
+  return texture
+}
+
+const generateWallBumpMap = () => {
+  const w = 512
+  const h = 512
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  canvas.width = w
+  canvas.height = h
+
+  // 1. Base plaster level
+  ctx.fillStyle = '#808080'
+  ctx.fillRect(0, 0, w, h)
+
+  // 2. Add procedural noise (creates a painted drywall or concrete texture)
+  const imgData = ctx.getImageData(0, 0, w, h)
+  const data = imgData.data
+  for (let i = 0; i < data.length; i += 4) {
+    // Generate subtle grit
+    const noise = (Math.random() - 0.5) * 25
+    const val = 128 + noise
+    data[i] = val // R
+    data[i + 1] = val // G
+    data[i + 2] = val // B
+    data[i + 3] = 255 // A
+  }
+  ctx.putImageData(imgData, 0, 0)
+
+  // 3. Add Top Trim / Crown Molding (White = raised)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, w, 15)
+  ctx.fillStyle = '#b0b0b0' // subtle shadow under the trim
+  ctx.fillRect(0, 15, w, 5)
+
+  // 4. Add Bottom Baseboard (White = raised)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, h - 35, w, 35)
+  ctx.fillStyle = '#a0a0a0' // lip of the baseboard
+  ctx.fillRect(0, h - 38, w, 3)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+
+  // Stretch the texture out horizontally so it doesn't compress on long walls
+  texture.repeat.set(4, 1)
+  texture.needsUpdate = true
+
+  return texture
+}
+
+const wallBumpTexture = generateWallBumpMap()
+
+const rackBumpTexture = generateRackBumpMap()
+// 3. The Server Material
+const innerServerMaterialBase = new THREE.MeshStandardMaterial({
+  map: textures.map,
+  emissiveMap: textures.emissiveMap,
+  emissive: '#ffffff',
+  emissiveIntensity: 3.0,
+  roughness: 0.6,
+  metalness: 0.8,
 })
 const glowGeometryBase = new THREE.BoxGeometry(
   RACK_SIZE.w,
@@ -103,7 +352,7 @@ function useThemeColors() {
     border: '#333333',
     card: '#222222',
     wall: '#555555',
-    rackBody: '#1e293b',
+    rackBody: '#131313',
     grid: '#333333',
     text: '#ffffff',
   })
@@ -124,7 +373,7 @@ function useThemeColors() {
           border: getHex('--border', '#333333'),
           card: getHex('--card', '#1a1a1a'),
           wall: getHex('--muted-foreground', '#666666'),
-          rackBody: '#1e293b',
+          rackBody: '#131313',
           grid: getHex('--border', '#333333'),
           text: getHex('--foreground', '#ffffff'),
         })
@@ -149,8 +398,8 @@ function useThemeColors() {
 function useLabHistory(
   initEquipment: (eq: Array<Equipment>) => void,
   getEquipmentArray: () => Array<Equipment>,
-  setWallNodes: React.Dispatch<React.SetStateAction<Array<WallNode>>>,
-  setWallSegments: React.Dispatch<React.SetStateAction<Array<WallSegment>>>,
+  initWallNodes: (nodes: Array<WallNode>) => void,
+  initWallSegments: (segments: Array<WallSegment>) => void,
   setLabels: React.Dispatch<React.SetStateAction<Array<LabLabel>>>,
 ) {
   interface HistoryState {
@@ -206,8 +455,8 @@ function useLabHistory(
         }
         const prev = currentHistory[historyIndex]
         initEquipment(prev.equipment)
-        setWallNodes(prev.wallNodes)
-        setWallSegments(prev.wallSegments)
+        initWallNodes(prev.wallNodes)
+        initWallSegments(prev.wallSegments)
         setLabels(prev.labels)
         setHistoryIndex(historyIndex - 1)
       }
@@ -217,8 +466,8 @@ function useLabHistory(
       historyIndex,
       getEquipmentArray,
       initEquipment,
-      setWallNodes,
-      setWallSegments,
+      initWallNodes,
+      initWallSegments,
       setLabels,
     ],
   )
@@ -228,8 +477,8 @@ function useLabHistory(
     if (nextIdx < history.length - 1) {
       const next = history[nextIdx + 1]
       initEquipment(next.equipment)
-      setWallNodes(next.wallNodes)
-      setWallSegments(next.wallSegments)
+      initWallNodes(next.wallNodes)
+      initWallSegments(next.wallSegments)
       setLabels(next.labels)
       setHistoryIndex(nextIdx)
     }
@@ -237,8 +486,8 @@ function useLabHistory(
     history,
     historyIndex,
     initEquipment,
-    setWallNodes,
-    setWallSegments,
+    initWallNodes,
+    initWallSegments,
     setLabels,
   ])
 
@@ -353,7 +602,7 @@ function GhostPreview({
     let snappedX = Math.round(point.x)
     let snappedZ = Math.round(point.z)
 
-    if (mode === 'add-wall' && wallNodes) {
+    if (mode === 'add-wall') {
       for (const n of wallNodes) {
         if (Math.hypot(n.x / 10 - point.x, n.y / 10 - point.z) < 3) {
           snappedX = n.x / 10
@@ -363,9 +612,7 @@ function GhostPreview({
       }
     }
 
-    if (cursorRef.current) {
-      cursorRef.current.position.set(snappedX, 0, snappedZ)
-    }
+    if (cursorRef.current) cursorRef.current.position.set(snappedX, 0, snappedZ)
 
     if (mode === 'add-wall' && wallStart && wallMeshRef.current) {
       const dist = wallStart.distanceTo(
@@ -385,7 +632,6 @@ function GhostPreview({
 
   return (
     <group>
-      {/* 1. The cursor indicator (Only used for rack placement right now) */}
       <group ref={cursorRef}>
         {mode === 'add-rack' && (
           <mesh position={[0, RACK_SIZE.h / 2, 0]}>
@@ -395,7 +641,6 @@ function GhostPreview({
         )}
       </group>
 
-      {/* 2. The connecting wall preview (Independently tracked) */}
       {mode === 'add-wall' && wallStart && (
         <mesh ref={wallMeshRef} geometry={wallGeometryBase}>
           <meshStandardMaterial color="#3b82f6" transparent opacity={0.3} />
@@ -532,15 +777,15 @@ function Rack({
   const textGroupRef = useRef<THREE.Group>(null)
   const isDel = mode === 'delete'
 
-  const rackRotation = (data as any)?.rotation || 0
   const vOffset = useMemo(() => new THREE.Vector3(), [])
   const yAxis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
 
   useFrame((state) => {
-    const currentData = useLabStore.getState().equipment[id] || data
-    const rackRotation = (currentData as any)?.rotation || 0
+    const currentData = useLabStore.getState().equipment[id]
 
-    if (groupRef.current && currentData) {
+    const rackRotation = (currentData as any).rotation || 0
+
+    if (groupRef.current) {
       if (
         isSelected &&
         groupCenter &&
@@ -583,7 +828,6 @@ function Rack({
   })
 
   const rackColor = useMemo(() => {
-    if (!data) return colors.rackBody
     const match = data.id.match(/R(\d+)-C(\d+)/)
     const r = match ? parseInt(match[1], 10) : 0
     const c = match ? parseInt(match[2], 10) : 0
@@ -592,7 +836,7 @@ function Rack({
     if (viewOverlay === 'network')
       return `hsl(210, 100%, ${c % 2 === 0 ? 40 : 70}%)`
     return colors.rackBody
-  }, [viewOverlay, data?.id, colors.rackBody])
+  }, [viewOverlay, data.id, colors.rackBody])
 
   const handleClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
@@ -619,8 +863,8 @@ function Rack({
     ],
   )
 
-  if (!data) return null
   const renderAsRealMesh = isSelected
+  const rackRotation = (data as any).rotation
 
   return (
     <group
@@ -636,26 +880,31 @@ function Rack({
       )}
 
       {renderAsRealMesh ? (
-        <RoundedBox
-          args={[RACK_SIZE.w, RACK_SIZE.h, RACK_SIZE.d]}
-          radius={0.2}
-          castShadow
-          onClick={handleClick}
-        >
+        <mesh geometry={rackGeometryBase} castShadow onClick={handleClick}>
           <meshStandardMaterial
             color={isDel ? '#ef4444' : rackColor}
-            metalness={0.9}
-            roughness={0.5}
+            metalness={0.8}
+            roughness={0.6}
+            bumpMap={rackBumpTexture}
+            bumpScale={2}
             emissive={viewOverlay !== 'none' ? rackColor : '#000'}
             emissiveIntensity={viewOverlay !== 'none' ? 0.6 : 0}
           />
-        </RoundedBox>
+        </mesh>
       ) : (
         <Instance color={isDel ? '#ef4444' : rackColor} onClick={handleClick} />
       )}
 
+      {/* Layer 1: Internal servers with LEDs (Placed JUST outside the solid rack block) */}
       <mesh
-        position={[0, 0, RACK_SIZE.d / 2 + 0.1]}
+        position={[0, 0, RACK_SIZE.d / 2 + 0.05]}
+        geometry={glassGeometryBase}
+        material={innerServerMaterialBase}
+      />
+
+      {/* Layer 2: The tinted physical glass door (Sitting just over the servers) */}
+      <mesh
+        position={[0, 0, RACK_SIZE.d / 2 + 0.15]}
         geometry={glassGeometryBase}
         material={glassMaterialBase}
       />
@@ -665,10 +914,9 @@ function Rack({
           <mesh>
             <planeGeometry args={[data.id.length * 1.2 + 2, 4]} />
             <meshBasicMaterial
-              color="#000000"
+              color={colors.background}
               transparent
-              opacity={0.6}
-              depthTest={false}
+              opacity={0.7}
             />
           </mesh>
           <Text
@@ -716,7 +964,7 @@ function WallNodeRenderer({
   const p1 = useMemo(() => new THREE.Vector3(), [])
 
   useFrame(() => {
-    const currentNode = useLabStore.getState().wallNodes[node.id] || node
+    const currentNode = useLabStore.getState().wallNodes[node.id]
 
     if (
       groupRef.current &&
@@ -762,7 +1010,6 @@ function WallNodeRenderer({
         }
       }}
     >
-      {/* Visible Joint / Pillar - ALWAYS VISIBLE */}
       <mesh position={[0, 0, 0]}>
         <cylinderGeometry args={[2, 2, WALL_H + 0.5, 16]} />
         <meshStandardMaterial
@@ -772,18 +1019,16 @@ function WallNodeRenderer({
               : isSelected
                 ? colors.primary
                 : hovered
-                  ? '#f59e0b' // Amber on hover
-                  : '#94a3b8' // Slate colored node
+                  ? '#f59e0b'
+                  : colors.wall
           }
+          roughness={0.9}
+          metalness={0.05}
+          bumpMap={wallBumpTexture}
+          bumpScale={0.8}
           transparent
-          opacity={0.9}
+          opacity={0.95}
         />
-      </mesh>
-
-      {/* Invisible interaction cylinder for much easier clicking - ALWAYS ACTIVE */}
-      <mesh>
-        <cylinderGeometry args={[5, 5, WALL_H, 8]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
     </group>
   )
@@ -824,13 +1069,13 @@ function WallSegmentRenderer({
   useFrame(() => {
     if (!groupRef.current || !node1 || !node2) return
 
-    const n1 = useLabStore.getState().wallNodes[node1.id] || node1
-    const n2 = useLabStore.getState().wallNodes[node2.id] || node2
+    const n1 = useLabStore.getState().wallNodes[node1.id]
+    const n2 = useLabStore.getState().wallNodes[node2.id]
 
-    let nx1 = n1.x / 10
-    let nz1 = n1.y / 10
-    let nx2 = n2.x / 10
-    let nz2 = n2.y / 10
+    let nx1 = n1.x / 10,
+      nz1 = n1.y / 10
+    let nx2 = n2.x / 10,
+      nz2 = n2.y / 10
 
     if (
       groupCenter &&
@@ -888,13 +1133,19 @@ function WallSegmentRenderer({
                 ? colors.primary
                 : colors.wall
           }
+          roughness={0.9}
+          metalness={0.05}
+          bumpMap={wallBumpTexture}
+          bumpScale={0.8}
           transparent
-          opacity={isSelected ? 0.9 : 0.7}
+          opacity={isSelected ? 0.95 : 0.85}
         />
       </mesh>
     </group>
   )
 }
+
+// --- Main Application Component ---
 
 export function CanvasComponent3D({
   equipment: initialEquipment,
@@ -911,50 +1162,62 @@ export function CanvasComponent3D({
     (state) => state.deleteMultipleEquipment,
   )
 
+  const initWallNodes = useLabStore((state) => state.initWallNodes)
   const addWallNode = useLabStore((state) => state.addWallNode)
-  const addWallSegment = useLabStore((state) => state.addWallSegment)
   const updateMultipleWallNodes = useLabStore(
     (state) => state.updateMultipleWallNodes,
   )
   const deleteMultipleWallNodes = useLabStore(
     (state) => state.deleteMultipleWallNodes,
   )
+
+  const initWallSegments = useLabStore((state) => state.initWallSegments)
+  const addWallSegment = useLabStore((state) => state.addWallSegment)
   const deleteMultipleWallSegments = useLabStore(
     (state) => state.deleteMultipleWallSegments,
   )
 
   const hasUnsavedChanges = useLabStore((state) => state.hasUnsavedChanges)
   const markSaved = useLabStore((state) => state.markSaved)
+
   const equipmentIds = useLabStore(
     useShallow((state) => Object.keys(state.equipment)),
   )
-
-  const [wallNodes, setWallNodes] = useState<Array<WallNode>>([])
-  const [wallSegments, setWallSegments] = useState<Array<WallSegment>>([])
+  const wallNodesMap = useLabStore((state) => state.wallNodes)
+  const wallSegmentsMap = useLabStore((state) => state.wallSegments)
+  const wallNodes = useMemo(() => Object.values(wallNodesMap), [wallNodesMap])
+  const wallSegments = useMemo(
+    () => Object.values(wallSegmentsMap),
+    [wallSegmentsMap],
+  )
 
   const initStore = useRef(false)
   useEffect(() => {
     if (!initStore.current) {
       initEquipment(initialEquipment)
-
       const nodes: Array<WallNode> = []
       const segments: Array<WallSegment> = []
 
-      ;(initialWalls || []).forEach((w: any) => {
-        const n1 = { id: `WN-${w.id}-1`, x: w.x1, y: w.y1 }
-        const n2 = { id: `WN-${w.id}-2`, x: w.x2, y: w.y2 }
-        nodes.push(n1, n2)
-        segments.push({ id: `WS-${w.id}`, node1Id: n1.id, node2Id: n2.id })
-      })
+      if (initialWalls) {
+        initialWalls.forEach((w: any) => {
+          const n1 = { id: `WN-${w.id}-1`, x: w.x1, y: w.y1 }
+          const n2 = { id: `WN-${w.id}-2`, x: w.x2, y: w.y2 }
+          nodes.push(n1, n2)
+          segments.push({ id: `WS-${w.id}`, node1Id: n1.id, node2Id: n2.id })
+        })
+      }
 
-      setWallNodes(nodes)
-      setWallSegments(segments)
-      useLabStore.getState().initWallNodes(nodes)
-      useLabStore.getState().initWallSegments(segments)
-
+      initWallNodes(nodes)
+      initWallSegments(segments)
       initStore.current = true
     }
-  }, [initialEquipment, initialWalls, initEquipment])
+  }, [
+    initialEquipment,
+    initialWalls,
+    initEquipment,
+    initWallNodes,
+    initWallSegments,
+  ])
 
   const [selectedIds, setSelectedIds] = useState<Array<string>>(
     initialSelectedId ? [initialSelectedId] : [],
@@ -980,10 +1243,11 @@ export function CanvasComponent3D({
   const { historyIndex, history, saveToHistory, undo, redo } = useLabHistory(
     initEquipment,
     getEquipmentArray,
-    setWallNodes,
-    setWallSegments,
+    initWallNodes,
+    initWallSegments,
     setLabels,
   )
+
   const {
     selectStart,
     selectEnd,
@@ -994,6 +1258,7 @@ export function CanvasComponent3D({
     handlePointerUp,
   } = useBoxSelection(mode, wallNodes, setSelectedIds)
 
+  // Refs for Drag Controls
   const mapControlsRef = useRef<MapControlsImpl>(null)
   const [transformControlNode, setTransformControlNode] =
     useState<TransformControlsImpl | null>(null)
@@ -1005,6 +1270,7 @@ export function CanvasComponent3D({
   const dragDeltaRotRef = useRef(0)
   const [dragDropCount, setDragDropCount] = useState(0)
 
+  // Clear drag parameters on deselection
   useEffect(() => {
     if (selectedIds.length === 0 || (mode !== 'move' && mode !== 'rotate')) {
       dragStartPos.current = null
@@ -1013,6 +1279,7 @@ export function CanvasComponent3D({
     }
   }, [selectedIds, mode])
 
+  // Reset temp states on mode change
   useEffect(() => {
     if (mode !== 'add-wall') {
       setWallStart(null)
@@ -1072,9 +1339,9 @@ export function CanvasComponent3D({
     const tempOffset = new THREE.Vector3()
 
     const eqUpdates = selectedEquipmentData.map((obj) => {
-      tempOffset.set(obj.x / 10 - cx, 0, obj.y / 10 - cz)
-      tempOffset.applyAxisAngle(yAxis, angle)
-
+      tempOffset
+        .set(obj.x / 10 - cx, 0, obj.y / 10 - cz)
+        .applyAxisAngle(yAxis, angle)
       return {
         id: obj.id,
         updates: {
@@ -1089,31 +1356,20 @@ export function CanvasComponent3D({
     const nodeIdsToUpdate = selectedIds.filter((id) => id.startsWith('WN'))
     if (nodeIdsToUpdate.length > 0) {
       const nodeUpdates = nodeIdsToUpdate
-        .map((id) => wallNodes.find((n) => n.id === id))
+        .map((id) => wallNodesMap[id])
         .filter(Boolean)
         .map((node) => {
-          tempOffset.set(
-            (node as WallNode).x / 10 - cx,
-            0,
-            (node as WallNode).y / 10 - cz,
-          )
-          tempOffset.applyAxisAngle(yAxis, angle)
+          tempOffset
+            .set(node.x / 10 - cx, 0, node.y / 10 - cz)
+            .applyAxisAngle(yAxis, angle)
           return {
-            id: (node as WallNode).id,
+            id: node.id,
             updates: {
               x: snapToData(cx + tempOffset.x + dx, useSnap),
               y: snapToData(cz + tempOffset.z + dz, useSnap),
             },
           }
         })
-
-      setWallNodes((prev) =>
-        prev.map((n) => {
-          const update = nodeUpdates.find((u) => u.id === n.id)
-          if (update) return { ...n, ...update.updates }
-          return n
-        }),
-      )
       updateMultipleWallNodes(nodeUpdates)
     }
 
@@ -1129,11 +1385,13 @@ export function CanvasComponent3D({
     saveToHistory,
     updateMultipleEquipment,
     updateMultipleWallNodes,
+    wallNodesMap,
     wallNodes,
     wallSegments,
     labels,
   ])
 
+  // Safe TransformControls Event Attachment
   useEffect(() => {
     if (transformControlNode && dummyObj) {
       const onDragChange = (e: any) => {
@@ -1145,10 +1403,11 @@ export function CanvasComponent3D({
           handleDragEnd()
         }
       }
-      const eventDispatcher = transformControlNode as any
-      eventDispatcher.addEventListener('dragging-changed', onDragChange)
+
+      const controls = transformControlNode as any
+      controls.addEventListener('dragging-changed', onDragChange)
       return () =>
-        eventDispatcher.removeEventListener('dragging-changed', onDragChange)
+        controls.removeEventListener('dragging-changed', onDragChange)
     }
   }, [transformControlNode, dummyObj, handleDragEnd])
 
@@ -1162,23 +1421,18 @@ export function CanvasComponent3D({
       let idsToSelect = [id]
 
       if (id.startsWith('WN')) {
-        const targetNode = wallNodes.find((n) => n.id === id)
-        if (targetNode) {
-          const overlappingNodes = wallNodes.filter(
-            (n) => n.x === targetNode.x && n.y === targetNode.y,
-          )
-          idsToSelect = overlappingNodes.map((n) => n.id)
-        }
+        const targetNode = wallNodesMap[id]
+        const overlappingNodes = wallNodes.filter(
+          (n) => n.x === targetNode.x && n.y === targetNode.y,
+        )
+        idsToSelect = overlappingNodes.map((n) => n.id)
       }
 
       setSelectedIds((prev) => {
         if (shiftKey) {
           const isSelected = prev.includes(id)
-          if (isSelected) {
-            return prev.filter((i) => !idsToSelect.includes(i))
-          } else {
-            return Array.from(new Set([...prev, ...idsToSelect]))
-          }
+          if (isSelected) return prev.filter((i) => !idsToSelect.includes(i))
+          return Array.from(new Set([...prev, ...idsToSelect]))
         }
         return idsToSelect
       })
@@ -1193,14 +1447,14 @@ export function CanvasComponent3D({
           to: '/map',
           search: (prev: any) => ({
             ...prev,
-            redirectId: id ?? undefined,
+            redirectId: id,
             redirectType: 'rack',
           }),
           replace: true,
         })
       }
     },
-    [navigate, mode, wallNodes],
+    [navigate, mode, wallNodes, wallNodesMap],
   )
 
   const handleGridClick = (e: ThreeEvent<MouseEvent>) => {
@@ -1252,36 +1506,28 @@ export function CanvasComponent3D({
           )
         } else {
           startNodeId = `WN-${Date.now()}`
-          const newNode = { id: startNodeId, x: pt.x * 10, y: pt.z * 10 }
-          setWallNodes((prev) => [...prev, newNode])
-          addWallNode(newNode)
+          addWallNode({ id: startNodeId, x: pt.x * 10, y: pt.z * 10 })
           setWallStart(pt)
         }
         setWallStartNodeId(startNodeId)
       } else {
         let endNodeId
         let endPt
-
         if (targetNode) {
           endNodeId = targetNode.id
           endPt = new THREE.Vector3(targetNode.x / 10, 0, targetNode.y / 10)
         } else {
           endNodeId = `WN-${Date.now()}`
-          const newNode = { id: endNodeId, x: pt.x * 10, y: pt.z * 10 }
-          setWallNodes((prev) => [...prev, newNode])
-          addWallNode(newNode)
+          addWallNode({ id: endNodeId, x: pt.x * 10, y: pt.z * 10 })
           endPt = pt
         }
 
         if (wallStartNodeId !== endNodeId) {
-          const newSeg = {
+          addWallSegment({
             id: `WS-${Date.now()}`,
             node1Id: wallStartNodeId!,
             node2Id: endNodeId,
-          }
-          setWallSegments((prev) => [...prev, newSeg])
-          addWallSegment(newSeg)
-
+          })
           setWallStart(endPt)
           setWallStartNodeId(endNodeId)
         }
@@ -1325,10 +1571,6 @@ export function CanvasComponent3D({
     deleteMultipleWallNodes(nodeIds)
     deleteMultipleWallSegments(allSegIdsToDelete)
 
-    setWallNodes((prev) => prev.filter((n) => !nodeIds.includes(n.id)))
-    setWallSegments((prev) =>
-      prev.filter((s) => !allSegIdsToDelete.includes(s.id)),
-    )
     setSelectedIds([])
   }
 
@@ -1411,7 +1653,6 @@ export function CanvasComponent3D({
               <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
                 <GizmoViewport />
               </GizmoHelper>
-
               <PerspectiveCamera
                 makeDefault={activeCamera === 'perspective'}
                 position={[150, 200, 150]}
@@ -1425,7 +1666,6 @@ export function CanvasComponent3D({
                 near={-500}
                 far={2000}
               />
-
               <SceneController
                 is2D={is2D}
                 activeCamera={activeCamera}
@@ -1434,7 +1674,7 @@ export function CanvasComponent3D({
                 controlsRef={mapControlsRef}
               />
 
-              <ambientLight intensity={1.8} />
+              <ambientLight intensity={0.6} />
               <pointLight
                 position={[100, 200, 100]}
                 castShadow
@@ -1489,7 +1729,7 @@ export function CanvasComponent3D({
                 fadeDistance={1500}
                 fadeStrength={1}
                 cellThickness={1}
-                sectionThickness={2}
+                sectionThickness={1}
                 position={[0, -0.01, 0]}
               />
 
@@ -1497,12 +1737,7 @@ export function CanvasComponent3D({
                 (mode === 'move' || mode === 'rotate') &&
                 groupCenter && (
                   <group key={selectedIds.join('-') + dragDropCount}>
-                    <group
-                      ref={(node) =>
-                        node && dummyObj !== node && setDummyObj(node)
-                      }
-                      position={groupCenter}
-                    />
+                    <group ref={setDummyObj} position={groupCenter} />
                     {dummyObj && dummyObj.parent && (
                       <TransformControls
                         ref={setTransformControlNode}
@@ -1535,9 +1770,11 @@ export function CanvasComponent3D({
               >
                 {viewOverlay === 'none' ? (
                   <meshStandardMaterial
-                    metalness={0.9}
-                    roughness={0.5}
+                    metalness={0.8}
+                    roughness={0.6}
                     color="#ffffff"
+                    bumpMap={rackBumpTexture}
+                    bumpScale={2}
                   />
                 ) : (
                   <meshBasicMaterial color="#ffffff" />
@@ -1578,13 +1815,7 @@ export function CanvasComponent3D({
                       .filter((s) => s.node1Id === id || s.node2Id === id)
                       .map((s) => s.id)
                     deleteMultipleWallNodes([id])
-                    deleteMultipleWallSegments(orphaned)
-                    setWallNodes((prev) =>
-                      prev.filter((node) => node.id !== id),
-                    )
-                    setWallSegments((prev) =>
-                      prev.filter((s) => !orphaned.includes(s.id)),
-                    )
+                    if (orphaned.length) deleteMultipleWallSegments(orphaned)
                   }}
                   onDrawConnect={(node) => {
                     if (mode === 'add-wall') {
@@ -1603,7 +1834,6 @@ export function CanvasComponent3D({
                           node1Id: wallStartNodeId,
                           node2Id: node.id,
                         }
-                        setWallSegments((prev) => [...prev, newSeg])
                         addWallSegment(newSeg)
                         setWallStart(
                           new THREE.Vector3(node.x / 10, 0, node.y / 10),
@@ -1619,8 +1849,8 @@ export function CanvasComponent3D({
                 <WallSegmentRenderer
                   key={s.id}
                   segment={s}
-                  node1={wallNodes.find((n) => n.id === s.node1Id)}
-                  node2={wallNodes.find((n) => n.id === s.node2Id)}
+                  node1={wallNodesMap[s.node1Id]}
+                  node2={wallNodesMap[s.node2Id]}
                   colors={colors}
                   mode={mode}
                   isNode1Selected={selectedIds.includes(s.node1Id)}
@@ -1628,19 +1858,16 @@ export function CanvasComponent3D({
                   groupCenter={groupCenter}
                   dragDeltaRef={dragDeltaRef}
                   dragDeltaRotRef={dragDeltaRotRef}
-                  onSelectSegment={(id1, id2, shift) => {
+                  onSelectSegment={(id1, id2, shift) =>
                     setSelectedIds((prev) =>
                       shift
                         ? Array.from(new Set([...prev, id1, id2]))
                         : [id1, id2],
                     )
-                  }}
+                  }
                   onDelete={(id) => {
                     saveToHistory(wallNodes, wallSegments, labels)
                     deleteMultipleWallSegments([id])
-                    setWallSegments((prev) =>
-                      prev.filter((seg) => seg.id !== id),
-                    )
                   }}
                 />
               ))}
@@ -1663,7 +1890,6 @@ export function CanvasComponent3D({
                 wallStart={wallStart}
                 wallNodes={wallNodes}
               />
-
               <ContactShadows
                 opacity={0.4}
                 scale={1000}

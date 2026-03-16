@@ -53,7 +53,7 @@ export const useLabStore = create<LabState>((set, get) => ({
     set((state) => {
       const newEq = { ...state.equipment }
       updatesList.forEach(({ id, updates }) => {
-        if (newEq[id]) newEq[id] = { ...newEq[id], ...updates }
+        if (id in newEq) newEq[id] = { ...newEq[id], ...updates }
       })
       return { equipment: newEq, hasUnsavedChanges: true }
     }),
@@ -83,7 +83,7 @@ export const useLabStore = create<LabState>((set, get) => ({
     set((state) => {
       const newNodes = { ...state.wallNodes }
       updatesList.forEach(({ id, updates }) => {
-        if (newNodes[id]) newNodes[id] = { ...newNodes[id], ...updates }
+        if (id in newNodes) newNodes[id] = { ...newNodes[id], ...updates }
       })
       return { wallNodes: newNodes, hasUnsavedChanges: true }
     }),
