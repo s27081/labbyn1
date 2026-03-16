@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
-import { useSuspenseQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
 import { useForm } from '@tanstack/react-form'
 import {
   AlarmClock,
   ArrowDownUp,
-  Book,
   Box,
   Cable,
   Cctv,
@@ -23,7 +26,6 @@ import {
   Save,
   StickyNote,
   Trash2,
-  Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { TagItem } from '@/integrations/tags/tags.types'
@@ -37,8 +39,10 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { machineSpecInfoQueryOptions } from '@/integrations/machines/machines.query'
-import { TextField } from '@/components/text-field'
-import { useDeleteMachineMutation, useUpdateMachineMutation } from '@/integrations/machines/machines.mutation'
+import {
+  useDeleteMachineMutation,
+  useUpdateMachineMutation,
+} from '@/integrations/machines/machines.mutation'
 import { SubPageTemplate } from '@/components/subpage-template'
 import { SubpageCard } from '@/components/subpage-card'
 import { TagList } from '@/components/tag-list'
@@ -55,39 +59,42 @@ export const Route = createFileRoute('/_auth/machines/$machineId')({
 })
 
 function MachineDetailsPage() {
-    const router = useRouter()
+  const router = useRouter()
   const { machineId } = Route.useParams()
   const { data: machine } = useSuspenseQuery(
     machineSpecInfoQueryOptions(machineId),
   )
   const { data: teams } = useSuspenseQuery(teamsQueryOptions)
-const queryClient = useQueryClient()
-    const { data: labs } = useSuspenseQuery(labsBaseQueryOptions)
-    const { data: racks } = useSuspenseQuery(racksBaseListQueryOptions)
+  const queryClient = useQueryClient()
+  const { data: labs } = useSuspenseQuery(labsBaseQueryOptions)
+  const { data: racks } = useSuspenseQuery(racksBaseListQueryOptions)
 
   const updateMachine = useUpdateMachineMutation(machineId)
   const deleteMachine = useDeleteMachineMutation(machineId)
-  const { mutate: createShelf } = useCreateShelfMutation();
-  
+  const { mutate: createShelf } = useCreateShelfMutation()
+
   const handleShelfCreation = (rackId: number) => {
-    const nextOrder = (shelves?.length ?? 0) + 1;
-    
-    createShelf({
-      rackId: rackId,
-      shelfData: {
-        name: `Shelf ${nextOrder}`,
-        order: nextOrder,
-      }
-    },{
-      //to do
-      onSuccess: (data) => {
-        const queryOptions = singleShelfQueryOptions(String(rackId));
-        queryClient.setQueryData(queryOptions.queryKey, (oldShelves: any) => {
-          return oldShelves ? [...oldShelves, data] : [data];
-        });
-        form.setFieldValue('shelf_id', data.id);
-    }
-    })
+    const nextOrder = (shelves?.length ?? 0) + 1
+
+    createShelf(
+      {
+        rackId: rackId,
+        shelfData: {
+          name: `Shelf ${nextOrder}`,
+          order: nextOrder,
+        },
+      },
+      {
+        // to do
+        onSuccess: (data) => {
+          const queryOptions = singleShelfQueryOptions(String(rackId))
+          queryClient.setQueryData(queryOptions.queryKey, (oldShelves: any) => {
+            return oldShelves ? [...oldShelves, data] : [data]
+          })
+          form.setFieldValue('shelf_id', data.id)
+        },
+      },
+    )
   }
   const [isEditing, setIsEditing] = useState(false)
 
@@ -100,26 +107,32 @@ const queryClient = useQueryClient()
           setIsEditing(false)
         },
         onError: (error: Error) => {
-            toast.error('Update failed', { description: error.message })
-          }
+          toast.error('Update failed', { description: error.message })
+        },
       })
     },
   })
 
-  const [selectedTeam, setSelectedTeam] = useState<number | undefined>(machine.team_id);
-const [selectedRoom, setSelectedRoom] = useState<number | undefined>(machine.room_id); 
-const [selectedRack, setSelectedRack] = useState<number | undefined>(machine.rack_id);
-  
-    useEffect(() => {
-  if (isEditing) {
-    setSelectedTeam(machine.team_id);
-    setSelectedRoom(machine.room_id);
-    setSelectedRack(machine.rack_id);
-    form.reset();
-  }
-}, [isEditing, machine]);
+  const [selectedTeam, setSelectedTeam] = useState<number | undefined>(
+    machine.team_id,
+  )
+  const [selectedRoom, setSelectedRoom] = useState<number | undefined>(
+    machine.room_id,
+  )
+  const [selectedRack, setSelectedRack] = useState<number | undefined>(
+    machine.rack_id,
+  )
 
-    const availableRooms = labs.filter(
+  useEffect(() => {
+    if (isEditing) {
+      setSelectedTeam(machine.team_id)
+      setSelectedRoom(machine.room_id)
+      setSelectedRack(machine.rack_id)
+      form.reset()
+    }
+  }, [isEditing, machine])
+
+  const availableRooms = labs.filter(
     (lab) => Number(lab.team_id) === Number(selectedTeam),
   )
 
@@ -129,7 +142,7 @@ const [selectedRack, setSelectedRack] = useState<number | undefined>(machine.rac
       Number(rack.room_id) === Number(selectedRoom),
   )
 
-     const { data: shelves, isLoading: isLoadingShelves } = useQuery({
+  const { data: shelves, isLoading: isLoadingShelves } = useQuery({
     ...(selectedRack != null
       ? singleShelfQueryOptions(String(selectedRack))
       : { queryKey: ['shelf'], queryFn: () => [] }),
@@ -153,17 +166,20 @@ const [selectedRack, setSelectedRack] = useState<number | undefined>(machine.rac
         },
         onStartEdit: () => setIsEditing(true),
         onDelete: () => {
-        deleteMachine.mutate({}, {
-         onSuccess: () => {
-           toast.success('Machine deleted successfully')
-           router.history.back()
-         },
-         onError: (error: Error) => {
-           toast.error('Operation failed', { description: error.message })
-         },
-        });
-      },
-    }}
+          deleteMachine.mutate(
+            {},
+            {
+              onSuccess: () => {
+                toast.success('Machine deleted successfully')
+                router.history.back()
+              },
+              onError: (error: Error) => {
+                toast.error('Operation failed', { description: error.message })
+              },
+            },
+          )
+        },
+      }}
       content={
         <>
           <AutoDiscovertDialog
@@ -460,201 +476,217 @@ const [selectedRack, setSelectedRack] = useState<number | undefined>(machine.rac
           />
           {/* Localization section */}
           <SubpageCard
-  title={'Localization'}
-  description={'Platfrom localization details'}
-  type="Info"
-  Icon={MapPin}
-  content={
-    <div className="flex flex-col gap-4">
-      {isEditing ? (
-        <div className="flex flex-col gap-4 py-2">
-          {/* Team Selection */}
-          <form.Field
-            name="team_id"
-            children={(field) => (
-              <>
-                <Select
-                  value={field.state.value?.toString() ?? ''}
-                  onValueChange={(value) => {
-                    field.handleChange(Number(value));
-                    setSelectedTeam(Number(value));
+            title={'Localization'}
+            description={'Platfrom localization details'}
+            type="Info"
+            Icon={MapPin}
+            content={
+              <div className="flex flex-col gap-4">
+                {isEditing ? (
+                  <div className="flex flex-col gap-4 py-2">
+                    {/* Team Selection */}
+                    <form.Field
+                      name="team_id"
+                      children={(field) => (
+                        <>
+                          <Select
+                            value={field.state.value?.toString() ?? ''}
+                            onValueChange={(value) => {
+                              field.handleChange(Number(value))
+                              setSelectedTeam(Number(value))
 
-                    setSelectedRoom(undefined);
-          setSelectedRack(undefined);
-                    form.setFieldValue('room_id', undefined);
-          form.setFieldValue('rack_id', undefined);
-          form.setFieldValue('shelf_id', undefined);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a team" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teams.map((team) => (
-                      <SelectItem key={team.id} value={team.id.toString()}>
-                        {team.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                </>
-            )}
-          />
-
-          {/* Room / Lab Selection */}
-          <form.Field
-            name="room_id"
-            children={(field) => (
-              <>
-                <Select
-                  disabled={selectedTeam == null}
-                  value={field.state.value?.toString() ?? ''}
-                  onValueChange={(value) => {
-                    field.handleChange(Number(value));
-                    setSelectedRoom(Number(value));
-                    setSelectedRack(undefined);
-                    form.setFieldValue('rack_id', undefined);
-          form.setFieldValue('shelf_id', undefined);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue
-                      placeholder={
-                          selectedTeam == null
-                                        ? 'Select a Team first'
-                                        : availableRooms.length === 0
-                                          ? 'No rooms for this team'
-                                          : 'Select a lab'
-                      }
+                              setSelectedRoom(undefined)
+                              setSelectedRack(undefined)
+                              form.setFieldValue('room_id', undefined)
+                              form.setFieldValue('rack_id', undefined)
+                              form.setFieldValue('shelf_id', undefined)
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a team" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {teams.map((team) => (
+                                <SelectItem
+                                  key={team.id}
+                                  value={team.id.toString()}
+                                >
+                                  {team.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
                     />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableRooms.map((lab) => (
-                      <SelectItem key={lab.id} value={lab.id.toString()}>
-                        {lab.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
-            )}
-          />
 
-          {/* Rack Selection */}
-           <form.Field
-            name="rack_id"
-            children={(field) => (
-            <>
-            <Select
-              disabled={selectedRoom == null}
-              value={field.state.value?.toString() ?? ''}
-              onValueChange={(value) => {
-                field.handleChange(Number(value));
-                setSelectedRack(Number(value));
-                form.setFieldValue('shelf_id', undefined);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                   selectedRoom == null
+                    {/* Room / Lab Selection */}
+                    <form.Field
+                      name="room_id"
+                      children={(field) => (
+                        <>
+                          <Select
+                            disabled={selectedTeam == null}
+                            value={field.state.value?.toString() ?? ''}
+                            onValueChange={(value) => {
+                              field.handleChange(Number(value))
+                              setSelectedRoom(Number(value))
+                              setSelectedRack(undefined)
+                              form.setFieldValue('rack_id', undefined)
+                              form.setFieldValue('shelf_id', undefined)
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  selectedTeam == null
+                                    ? 'Select a Team first'
+                                    : availableRooms.length === 0
+                                      ? 'No rooms for this team'
+                                      : 'Select a lab'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableRooms.map((lab) => (
+                                <SelectItem
+                                  key={lab.id}
+                                  value={lab.id.toString()}
+                                >
+                                  {lab.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                    />
+
+                    {/* Rack Selection */}
+                    <form.Field
+                      name="rack_id"
+                      children={(field) => (
+                        <>
+                          <Select
+                            disabled={selectedRoom == null}
+                            value={field.state.value?.toString() ?? ''}
+                            onValueChange={(value) => {
+                              field.handleChange(Number(value))
+                              setSelectedRack(Number(value))
+                              form.setFieldValue('shelf_id', undefined)
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  selectedRoom == null
                                     ? 'Select a Room first'
                                     : availableRacks.length === 0
                                       ? 'No racks available'
                                       : 'Select a rack'
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {availableRacks.map((rack) => (
-                  <SelectItem key={rack.id} value={rack.id.toString()}>
-                    {rack.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-</>
-            ) }      />
-          {/* Shelf Selection */}
-          <form.Field
-            name="shelf_id"
-            children={(field) => (
-              <>
-                <Select
-                  disabled={selectedRack == null}
-                  value={field.state.value?.toString() ?? ''}
-                  onValueChange={(value) => {
-                    if (value === 'new'){
-                      handleShelfCreation(Number(selectedRack));
-                      return;
-                    }
-                    field.handleChange(Number(value))
-                }}
-                >
-                  <SelectTrigger>
-                    <SelectValue
-                      placeholder={
-                                       selectedRack == null
-                                        ? 'Select a Rack first'
-                                        : isLoadingShelves
-                                          ? 'Loading shelves...'
-                                          : 'Select a shelf'
-                                    }
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableRacks.map((rack) => (
+                                <SelectItem
+                                  key={rack.id}
+                                  value={rack.id.toString()}
+                                >
+                                  {rack.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
                     />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingShelves && field.state.value && (
-    <SelectItem value={field.state.value.toString()}>
-      Shelf #{machine.shelf_number}
-    </SelectItem>
-  )}
-                    {shelves
-                      ?.sort((a, b) => a.order - b.order)
-                      .map((shelf) => (
-                        <SelectItem key={shelf.id} value={shelf.id.toString()}>
-                          Shelf #{shelf.order}
-                        </SelectItem>
-                      ))}
-                      <SelectItem 
-            value="new">
-            <div className="flex items-center gap-2">
-              <Plus className="h-3.5 w-3.5" />
-              <span>Add new shelf...</span>
-            </div>
-              </SelectItem>
-                  </SelectContent>
-                </Select>
-                </>
-            )}
+                    {/* Shelf Selection */}
+                    <form.Field
+                      name="shelf_id"
+                      children={(field) => (
+                        <>
+                          <Select
+                            disabled={selectedRack == null}
+                            value={field.state.value?.toString() ?? ''}
+                            onValueChange={(value) => {
+                              if (value === 'new') {
+                                handleShelfCreation(Number(selectedRack))
+                                return
+                              }
+                              field.handleChange(Number(value))
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  selectedRack == null
+                                    ? 'Select a Rack first'
+                                    : isLoadingShelves
+                                      ? 'Loading shelves...'
+                                      : 'Select a shelf'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {isLoadingShelves && field.state.value && (
+                                <SelectItem
+                                  value={field.state.value.toString()}
+                                >
+                                  Shelf #{machine.shelf_number}
+                                </SelectItem>
+                              )}
+                              {shelves
+                                ?.sort((a, b) => a.order - b.order)
+                                .map((shelf) => (
+                                  <SelectItem
+                                    key={shelf.id}
+                                    value={shelf.id.toString()}
+                                  >
+                                    Shelf #{shelf.order}
+                                  </SelectItem>
+                                ))}
+                              <SelectItem value="new">
+                                <div className="flex items-center gap-2">
+                                  <Plus className="h-3.5 w-3.5" />
+                                  <span>Add new shelf...</span>
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col">
+                    {[
+                      { label: 'Team', value: machine.team_name },
+                      { label: 'Room name', value: machine.room_name },
+                      { label: 'Rack name', value: machine.rack_name },
+                      { label: 'Shelf number', value: machine.shelf_number },
+                    ].map((item, index, array) => (
+                      <div
+                        key={item.label}
+                        className={`flex flex-col gap-1.5 py-3 ${
+                          index !== array.length - 1
+                            ? 'border-b border-border/50'
+                            : ''
+                        }`}
+                      >
+                        <span className="text-[11px] font-bold uppercase tracking-tight text-muted-foreground/80">
+                          {item.label}
+                        </span>
+                        <span className="text-sm font-medium text-foreground">
+                          {item.value || '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            }
           />
-        </div>
-      ) : (
-        <div className="flex flex-col">
-          {[
-            { label: 'Team', value: machine.team_name },
-            { label: 'Room name', value: machine.room_name },
-            { label: 'Rack name', value: machine.rack_name },
-            { label: 'Shelf number', value: machine.shelf_number },  
-          ].map((item, index, array) => (
-            <div
-              key={item.label}
-              className={`flex flex-col gap-1.5 py-3 ${
-                index !== array.length - 1 ? 'border-b border-border/50' : ''
-              }`}
-            >
-              <span className="text-[11px] font-bold uppercase tracking-tight text-muted-foreground/80">
-                {item.label}
-              </span>
-              <span className="text-sm font-medium text-foreground">
-                {item.value || '—'}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  }
-/>
           {/* Monitoring */}
           <SubpageCard
             title={'Monitoring'}

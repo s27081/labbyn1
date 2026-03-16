@@ -192,7 +192,9 @@ async def get_machine_full_detail(
         "added_on": machine.added_on,
         "team_id": machine.team_id,
         "team_name": machine.team.name if machine.team else "N/A",
-        "rack_id": machine.shelf.rack_id if (machine.shelf and machine.shelf.rack) else None,
+        "rack_id": (
+            machine.shelf.rack_id if (machine.shelf and machine.shelf.rack) else None
+        ),
         "rack_name": (
             machine.shelf.rack.name if (machine.shelf and machine.shelf.rack) else "N/A"
         ),

@@ -688,6 +688,7 @@ class CPUBase(BaseModel):
     """
     Base model for CPUs.
     """
+
     id: int
     name: str
 
@@ -723,6 +724,7 @@ class DisksBase(BaseModel):
     """
     Base model for Disks.
     """
+
     id: int
     name: str
     capacity: Optional[str]
@@ -1283,7 +1285,9 @@ class RackUpdate(BaseModel):
         default=[], description="List of existing Tag IDs to associate with this rack"
     )
     machines: Optional[List[Any]] = Field(
-        default=[], description="List of existing machines with associated shelf orders to place in the rack")
+        default=[],
+        description="List of existing machines with associated shelf orders to place in the rack",
+    )
 
 
 class RackResponse(RackBase):

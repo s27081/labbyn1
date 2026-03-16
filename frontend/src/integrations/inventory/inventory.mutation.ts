@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import type { ApiUpdateInventory } from './inventory.types'
 import api from '@/lib/api'
 

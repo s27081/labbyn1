@@ -1,6 +1,7 @@
-import api from '@/lib/api'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiUpdateRack } from './racks.types'
+import api from '@/lib/api'
+
 const PATHS = {
   BASE: '/db/racks',
   DETAIL: (id: number) => `/db/racks/${id}`,
@@ -21,8 +22,7 @@ export const useDeletRackMutation = (rackId: string | number) => {
 
   return useMutation({
     mutationKey: ['delete-rack'],
-    mutationFn: () =>
-      api.delete(PATHS.DETAIL(rackId)),
+    mutationFn: () => api.delete(PATHS.DETAIL(rackId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['racks'] })
     },
@@ -41,5 +41,3 @@ export const useUpdateRackMutation = (rackId: string | number) => {
     },
   })
 }
-
-

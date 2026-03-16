@@ -27,7 +27,7 @@ export function DndTable({ dbItems, onReorder }: DndTableProps) {
     dbItems.map((machines, index) => ({
       id: `shelf-${index}`,
       machines,
-    }))
+    })),
   )
   const sensors = useSensors(
     useSensor(PointerSensor),

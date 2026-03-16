@@ -3,8 +3,8 @@ import type { ApiShelfCreate } from './shelves.types'
 import api from '@/lib/api'
 
 const PATHS = {
-    BASE: '/db/shelf',
-    DETAIL: (id: number) => `/db/shelf/${id}`,
+  BASE: '/db/shelf',
+  DETAIL: (id: number) => `/db/shelf/${id}`,
 }
 
 export function useCreateShelfMutation(rackId: number) {
@@ -12,8 +12,13 @@ export function useCreateShelfMutation(rackId: number) {
 
   return useMutation({
     mutationKey: ['create-shelf'],
-    mutationFn: ({ rackId, shelfData} : { rackId: number, shelfData: ApiShelfCreate}) =>
-      api.post(PATHS.DETAIL(rackId), shelfData),
+    mutationFn: ({
+      rackId,
+      shelfData,
+    }: {
+      rackId: number
+      shelfData: ApiShelfCreate
+    }) => api.post(PATHS.DETAIL(rackId), shelfData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['machines'] })
       queryClient.invalidateQueries({ queryKey: ['shelf', rackId] })

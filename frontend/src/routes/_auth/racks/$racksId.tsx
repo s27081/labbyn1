@@ -3,6 +3,7 @@ import { useSuspenseQuery } from '@tanstack/react-query'
 import { useForm } from '@tanstack/react-form'
 import { Box, Cpu, Info, Users } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { ApiRackDetailMachineItem } from '@/integrations/racks/racks.types'
 import type { TagItem } from '@/integrations/tags/tags.types'
@@ -14,8 +15,10 @@ import { teamsQueryOptions } from '@/integrations/teams/teams.query'
 import { SubPageTemplate } from '@/components/subpage-template'
 import { DndTable } from '@/components/dnd/dnd-table'
 import { SubpageCard } from '@/components/subpage-card'
-import { useDeletRackMutation, useUpdateRackMutation } from '@/integrations/racks/racks.mutation'
-import { toast } from 'sonner'
+import {
+  useDeletRackMutation,
+  useUpdateRackMutation,
+} from '@/integrations/racks/racks.mutation'
 import {
   Select,
   SelectContent,
@@ -53,8 +56,8 @@ function RacksDetailsPage() {
           setIsEditing(false)
         },
         onError: (error: Error) => {
-              toast.error('Operation failed', { description: error.message })
-            },
+          toast.error('Operation failed', { description: error.message })
+        },
       })
       setIsEditing(false)
     },
@@ -63,7 +66,7 @@ function RacksDetailsPage() {
   // Api returns machines in 2D array, it helps determine machines on the same shelf
   // For table we don't need nested structure
   const flatMachines = rack.machines.flat()
-  
+
   const columnsMachines: Array<ColumnDef<any>> = [
     {
       accessorKey: 'name',
@@ -94,7 +97,7 @@ function RacksDetailsPage() {
         editValue: form.state.values.name,
         onEditChange: (val) => form.setFieldValue('name', val),
         onSave: (e) => {
-          e?.preventDefault()
+          e.preventDefault()
           form.handleSubmit()
         },
         onCancel: () => {
@@ -153,7 +156,7 @@ function RacksDetailsPage() {
                             name="team_id"
                             children={(formField) => (
                               <Select
-                                value={formField.state.value?.toString() ?? ''}
+                                value={formField.state.value.toString()}
                                 onValueChange={(value) => {
                                   formField.handleChange(Number(value))
                                 }}
@@ -163,7 +166,10 @@ function RacksDetailsPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                   {teams.map((team) => (
-                                    <SelectItem key={team.id} value={team.id.toString()}>
+                                    <SelectItem
+                                      key={team.id}
+                                      value={team.id.toString()}
+                                    >
                                       {team.name}
                                     </SelectItem>
                                   ))}

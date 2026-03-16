@@ -1,6 +1,6 @@
-import { useState, useEffect, } from 'react'
+import { useState } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
-import { useSuspenseQuery, useQueryClient } from '@tanstack/react-query'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useForm, useStore } from '@tanstack/react-form'
 import {
   BanknoteArrowUp,
@@ -22,13 +22,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { inventoryItemInfoQueryOptions } from '@/integrations/inventory/inventory.query'
-import { useUpdateInventoryMutation, useDeleteInventoryMutation } from '@/integrations/inventory/inventory.mutation'
+import {
+  useDeleteInventoryMutation,
+  useUpdateInventoryMutation,
+} from '@/integrations/inventory/inventory.mutation'
 import { SubPageTemplate } from '@/components/subpage-template'
 import { SubpageCard } from '@/components/subpage-card'
 import { teamsQueryOptions } from '@/integrations/teams/teams.query'
 import { labsBaseQueryOptions } from '@/integrations/labs/labs.query'
 import { machinesQueryOptions } from '@/integrations/machines/machines.query'
 import { categoryListQueryOptions } from '@/integrations/category/category.query'
+import type { ApiUpdateInventory } from '@/integrations/inventory/inventory.types'
 
 export const Route = createFileRoute('/_auth/inventory/$inventoryId')({
   component: InventoryDetailsPage,
@@ -37,14 +41,13 @@ export const Route = createFileRoute('/_auth/inventory/$inventoryId')({
 function InventoryDetailsPage() {
   const router = useRouter()
   const { inventoryId } = Route.useParams()
-  
+
   const { data: inventory } = useSuspenseQuery(
     inventoryItemInfoQueryOptions(inventoryId),
   )
-  
+
   const { data: machines } = useSuspenseQuery(machinesQueryOptions)
   const { data: teams } = useSuspenseQuery(teamsQueryOptions)
-  const { data: labs } = useSuspenseQuery(labsBaseQueryOptions)
   const { data: category } = useSuspenseQuery(categoryListQueryOptions)
 
   const updateItem = useUpdateInventoryMutation(inventoryId)
@@ -52,39 +55,36 @@ function InventoryDetailsPage() {
   const [isEditing, setIsEditing] = useState(false)
 
   const form = useForm({
-    defaultValues: { ...inventory, machine_id: inventory.machine_id},
+    defaultValues: { ...inventory },
     onSubmit: ({ value }) => {
       const payload: ApiUpdateInventory = {
         name: value.name,
         quantity: Number(value.total_quantity || 0),
         team_id: value.team_id ? Number(value.team_id) : null,
-        //TO DO: disscuss inventory assigment and rentals
+        // TO DO: disscuss inventory assigment and rentals
         localization_id: inventory.room_id,
         machine_id: value.machine_id ? Number(value.machine_id) : null,
         category_id: Number(value.category_id || 0),
         rental_status: value.rental_status ?? true,
-        rental_id: value.rental_id ? Number(value.rental_id) : null
+        rental_id: value.rental_id ? Number(value.rental_id) : null,
       }
-      updateItem.mutate( payload,
-        { 
-          onSuccess: () => {
-            toast.success('Inventory updated successfully')
-            setIsEditing(false)
-          },
-          onError: (error: Error) => {
-            toast.error('Update failed', { description: error.message })
-          }
+      updateItem.mutate(payload, {
+        onSuccess: () => {
+          toast.success('Inventory updated successfully')
+          setIsEditing(false)
         },
-      )
+        onError: (error: Error) => {
+          toast.error('Update failed', { description: error.message })
+        },
+      })
     },
   })
 
-const currentTeamId = useStore(form.store, (state) => state.values.team_id);
-const availableMachines = machines.filter(
-  (machine) => Number(machine.team_id) === Number(currentTeamId)
-);
+  const currentTeamId = useStore(form.store, (state) => state.values.team_id)
+  const availableMachines = machines.filter(
+    (machine) => Number(machine.team_id) === Number(currentTeamId),
+  )
 
-  
   return (
     <SubPageTemplate
       headerProps={{
@@ -103,17 +103,20 @@ const availableMachines = machines.filter(
         },
         onStartEdit: () => setIsEditing(true),
         onDelete: () => {
-        deleteItem.mutate({}, {
-         onSuccess: () => {
-           toast.success('Item deleted successfully')
-           router.history.back()
-         },
-         onError: (error: Error) => {
-           toast.error('Operation failed', { description: error.message })
-         },
-        });
-      },
-    }}
+          deleteItem.mutate(
+            {},
+            {
+              onSuccess: () => {
+                toast.success('Item deleted successfully')
+                router.history.back()
+              },
+              onError: (error: Error) => {
+                toast.error('Operation failed', { description: error.message })
+              },
+            },
+          )
+        },
+      }}
       content={
         <div className="flex flex-col gap-6 w-full">
           {/* Item Information section */}
@@ -165,20 +168,25 @@ const availableMachines = machines.filter(
 
                       <div className="flex flex-col gap-2 min-h-8 justify-center">
                         {isEditing && !formField.isList ? (
-                          formField.name === "category_name" ? (
-                          <form.Field
+                          formField.name === 'category_name' ? (
+                            <form.Field
                               name="category_id"
                               children={(field) => (
                                 <Select
                                   value={field.state.value?.toString() ?? ''}
-                                  onValueChange={(value) => field.handleChange(Number(value))}
+                                  onValueChange={(value) =>
+                                    field.handleChange(Number(value))
+                                  }
                                 >
                                   <SelectTrigger className="h-8 text-sm">
                                     <SelectValue placeholder="Select a category" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {category?.map((cat: any) => (
-                                      <SelectItem key={cat.id} value={cat.id.toString()}>
+                                    {category.map((cat: any) => (
+                                      <SelectItem
+                                        key={cat.id}
+                                        value={cat.id.toString()}
+                                      >
                                         {cat.name}
                                       </SelectItem>
                                     ))}
@@ -187,16 +195,18 @@ const availableMachines = machines.filter(
                               )}
                             />
                           ) : (
-                          <form.Field
-                            name={formField.name as any}
-                            children={(field) => (
-                              <Input
-                                value={String(field.state.value ?? '')}
-                                onChange={(e) => field.handleChange(e.target.value as any)}
-                                className="h-8 text-sm"
-                              />
-                            )}
-                          />
+                            <form.Field
+                              name={formField.name as any}
+                              children={(field) => (
+                                <Input
+                                  value={String(field.state.value ?? '')}
+                                  onChange={(e) =>
+                                    field.handleChange(e.target.value as any)
+                                  }
+                                  className="h-8 text-sm"
+                                />
+                              )}
+                            />
                           )
                         ) : (
                           <div className="text-sm font-medium text-foreground flex flex-col gap-1">
@@ -229,32 +239,35 @@ const availableMachines = machines.filter(
               <div className="flex flex-col gap-4">
                 {isEditing ? (
                   <div className="flex flex-col gap-4 py-2">
-                     {/* Team Selection */}
+                    {/* Team Selection */}
                     <form.Field
-            name="team_id"
-            children={(field) => (
-              <>
-                <Select
-                  value={field.state.value?.toString() ?? ''}
-                  onValueChange={(value) => {
-                    field.handleChange(Number(value));
-                    form.setFieldValue('machine_id', undefined);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a team" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teams.map((team) => (
-                      <SelectItem key={team.id} value={team.id.toString()}>
-                        {team.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                </>
-            )}
-          />
+                      name="team_id"
+                      children={(field) => (
+                        <>
+                          <Select
+                            value={field.state.value?.toString() ?? ''}
+                            onValueChange={(value) => {
+                              field.handleChange(Number(value))
+                              form.setFieldValue('machine_id', undefined)
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a team" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {teams.map((team) => (
+                                <SelectItem
+                                  key={team.id}
+                                  value={team.id.toString()}
+                                >
+                                  {team.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                    />
                     {/* Machine Selection */}
                     <form.Field
                       name="machine_id"
@@ -262,19 +275,18 @@ const availableMachines = machines.filter(
                         <Select
                           value={field.state.value?.toString() ?? ''}
                           onValueChange={(value) => {
-                            field.handleChange(Number(value));
+                            field.handleChange(Number(value))
                           }}
                         >
                           <SelectTrigger>
-                            <SelectValue
-                              placeholder={
-                                   'Select a machine'
-                              }
-                            />
+                            <SelectValue placeholder={'Select a machine'} />
                           </SelectTrigger>
                           <SelectContent>
                             {availableMachines.map((machine) => (
-                              <SelectItem key={machine.id} value={machine.id.toString()}>
+                              <SelectItem
+                                key={machine.id}
+                                value={machine.id.toString()}
+                              >
                                 {machine.name}
                               </SelectItem>
                             ))}
