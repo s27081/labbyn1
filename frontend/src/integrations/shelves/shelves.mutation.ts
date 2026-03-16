@@ -7,7 +7,7 @@ const PATHS = {
   DETAIL: (id: number) => `/db/shelf/${id}`,
 }
 
-export function useCreateShelfMutation(rackId: number) {
+export function useCreateShelfMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -21,7 +21,7 @@ export function useCreateShelfMutation(rackId: number) {
     }) => api.post(PATHS.DETAIL(rackId), shelfData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['machines'] })
-      queryClient.invalidateQueries({ queryKey: ['shelf', rackId] })
+      queryClient.invalidateQueries({ queryKey: ['shelf'] })
       queryClient.invalidateQueries({ queryKey: ['racks', 'list', 'base'] })
     },
   })

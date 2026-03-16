@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
-import {
-  useQuery,
-  useQueryClient,
-  useSuspenseQuery,
-} from '@tanstack/react-query'
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useForm } from '@tanstack/react-form'
 import {
   AlarmClock,
@@ -65,17 +61,15 @@ function MachineDetailsPage() {
     machineSpecInfoQueryOptions(machineId),
   )
   const { data: teams } = useSuspenseQuery(teamsQueryOptions)
-  const queryClient = useQueryClient()
   const { data: labs } = useSuspenseQuery(labsBaseQueryOptions)
   const { data: racks } = useSuspenseQuery(racksBaseListQueryOptions)
 
   const updateMachine = useUpdateMachineMutation(machineId)
   const deleteMachine = useDeleteMachineMutation(machineId)
   const { mutate: createShelf } = useCreateShelfMutation()
-
+  // TO DO: make shelf creation auto select the created shelf for the machine
   const handleShelfCreation = (rackId: number) => {
     const nextOrder = (shelves?.length ?? 0) + 1
-
     createShelf(
       {
         rackId: rackId,
@@ -85,13 +79,8 @@ function MachineDetailsPage() {
         },
       },
       {
-        // to do
         onSuccess: (data) => {
-          const queryOptions = singleShelfQueryOptions(String(rackId))
-          queryClient.setQueryData(queryOptions.queryKey, (oldShelves: any) => {
-            return oldShelves ? [...oldShelves, data] : [data]
-          })
-          form.setFieldValue('shelf_id', data.id)
+          console.log(data)
         },
       },
     )
@@ -113,19 +102,19 @@ function MachineDetailsPage() {
     },
   })
 
-  const [selectedTeam, setSelectedTeam] = useState<number | undefined>(
-    machine.team_id,
+  const [selectedTeam, setSelectedTeam] = useState<number | null | undefined>(
+    Number(machine.team_id),
   )
-  const [selectedRoom, setSelectedRoom] = useState<number | undefined>(
-    machine.room_id,
+  const [selectedRoom, setSelectedRoom] = useState<number | null | undefined>(
+    Number(machine.room_id),
   )
-  const [selectedRack, setSelectedRack] = useState<number | undefined>(
-    machine.rack_id,
+  const [selectedRack, setSelectedRack] = useState<number | null | undefined>(
+    Number(machine.rack_id),
   )
 
   useEffect(() => {
     if (isEditing) {
-      setSelectedTeam(machine.team_id)
+      setSelectedTeam(Number(machine.team_id))
       setSelectedRoom(machine.room_id)
       setSelectedRack(machine.rack_id)
       form.reset()
@@ -166,18 +155,15 @@ function MachineDetailsPage() {
         },
         onStartEdit: () => setIsEditing(true),
         onDelete: () => {
-          deleteMachine.mutate(
-            {},
-            {
-              onSuccess: () => {
-                toast.success('Machine deleted successfully')
-                router.history.back()
-              },
-              onError: (error: Error) => {
-                toast.error('Operation failed', { description: error.message })
-              },
+          deleteMachine.mutate(undefined, {
+            onSuccess: () => {
+              toast.success('Machine deleted successfully')
+              router.history.back()
             },
-          )
+            onError: (error: Error) => {
+              toast.error('Operation failed', { description: error.message })
+            },
+          })
         },
       }}
       content={
@@ -452,11 +438,6 @@ function MachineDetailsPage() {
                                 {convertTimestampToDate(rawValue as string) ||
                                   '—'}
                               </span>
-                            ) : formFiled.name === 'team_id' ? (
-                              <span className="truncate">
-                                {teams.find((team) => team.id === rawValue)
-                                  ?.name || '—'}
-                              </span>
                             ) : (
                               <span className="truncate">
                                 {typeof rawValue === 'string' ||
@@ -492,14 +473,14 @@ function MachineDetailsPage() {
                           <Select
                             value={field.state.value?.toString() ?? ''}
                             onValueChange={(value) => {
-                              field.handleChange(Number(value))
+                              field.handleChange(Number(value) as any)
                               setSelectedTeam(Number(value))
 
                               setSelectedRoom(undefined)
                               setSelectedRack(undefined)
-                              form.setFieldValue('room_id', undefined)
-                              form.setFieldValue('rack_id', undefined)
-                              form.setFieldValue('shelf_id', undefined)
+                              form.setFieldValue('room_id', null)
+                              form.setFieldValue('rack_id', null)
+                              form.setFieldValue('shelf_id', null)
                             }}
                           >
                             <SelectTrigger>
@@ -532,8 +513,8 @@ function MachineDetailsPage() {
                               field.handleChange(Number(value))
                               setSelectedRoom(Number(value))
                               setSelectedRack(undefined)
-                              form.setFieldValue('rack_id', undefined)
-                              form.setFieldValue('shelf_id', undefined)
+                              form.setFieldValue('rack_id', null)
+                              form.setFieldValue('shelf_id', null)
                             }}
                           >
                             <SelectTrigger>
@@ -573,7 +554,7 @@ function MachineDetailsPage() {
                             onValueChange={(value) => {
                               field.handleChange(Number(value))
                               setSelectedRack(Number(value))
-                              form.setFieldValue('shelf_id', undefined)
+                              form.setFieldValue('shelf_id', null)
                             }}
                           >
                             <SelectTrigger>

@@ -198,8 +198,8 @@ async def get_machine_full_detail(
         "rack_name": (
             machine.shelf.rack.name if (machine.shelf and machine.shelf.rack) else "N/A"
         ),
-        "shelf_id": machine.shelf.id if machine.shelf else "N/A",
-        "shelf_number": machine.shelf.order if machine.shelf else "N/A",
+        "shelf_id": machine.shelf.id if machine.shelf else 0,
+        "shelf_number": machine.shelf.order if machine.shelf else 0,
         "room_name": machine.room.name if machine.room else "N/A",
         "room_id": machine.room.id if machine.room else None,
         "last_update": machine.machine_metadata.last_update,

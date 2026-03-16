@@ -13,6 +13,7 @@ import {
   WeightTilde,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import type { ApiUpdateInventory } from '@/integrations/inventory/inventory.types'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -29,10 +30,8 @@ import {
 import { SubPageTemplate } from '@/components/subpage-template'
 import { SubpageCard } from '@/components/subpage-card'
 import { teamsQueryOptions } from '@/integrations/teams/teams.query'
-import { labsBaseQueryOptions } from '@/integrations/labs/labs.query'
 import { machinesQueryOptions } from '@/integrations/machines/machines.query'
 import { categoryListQueryOptions } from '@/integrations/category/category.query'
-import type { ApiUpdateInventory } from '@/integrations/inventory/inventory.types'
 
 export const Route = createFileRoute('/_auth/inventory/$inventoryId')({
   component: InventoryDetailsPage,
@@ -55,14 +54,24 @@ function InventoryDetailsPage() {
   const [isEditing, setIsEditing] = useState(false)
 
   const form = useForm({
-    defaultValues: { ...inventory },
+    defaultValues: {
+      ...inventory,
+      team_id: (inventory as any).team_id ?? (undefined as number | undefined),
+      machine_id:
+        (inventory as any).machine_id ?? (undefined as number | undefined),
+      category_id:
+        (inventory as any).category_id ?? (undefined as number | undefined),
+      rental_status: (inventory as any).rental_status ?? true,
+      rental_id:
+        (inventory as any).rental_id ?? (undefined as number | undefined),
+    },
     onSubmit: ({ value }) => {
       const payload: ApiUpdateInventory = {
         name: value.name,
         quantity: Number(value.total_quantity || 0),
         team_id: value.team_id ? Number(value.team_id) : null,
         // TO DO: disscuss inventory assigment and rentals
-        localization_id: inventory.room_id,
+        localization_id: inventory.room_id || 0,
         machine_id: value.machine_id ? Number(value.machine_id) : null,
         category_id: Number(value.category_id || 0),
         rental_status: value.rental_status ?? true,
@@ -103,18 +112,15 @@ function InventoryDetailsPage() {
         },
         onStartEdit: () => setIsEditing(true),
         onDelete: () => {
-          deleteItem.mutate(
-            {},
-            {
-              onSuccess: () => {
-                toast.success('Item deleted successfully')
-                router.history.back()
-              },
-              onError: (error: Error) => {
-                toast.error('Operation failed', { description: error.message })
-              },
+          deleteItem.mutate(undefined, {
+            onSuccess: () => {
+              toast.success('Item deleted successfully')
+              router.history.back()
             },
-          )
+            onError: (error: Error) => {
+              toast.error('Operation failed', { description: error.message })
+            },
+          })
         },
       }}
       content={

@@ -34,8 +34,8 @@ export const Route = createFileRoute('/_auth/racks/$racksId')({
 function RacksDetailsPage() {
   const { racksId } = Route.useParams()
   const router = useRouter()
-  const deleteRack = useDeletRackMutation(racksId)
-  const updateRack = useUpdateRackMutation(racksId)
+  const deleteRack = useDeletRackMutation(Number(racksId))
+  const updateRack = useUpdateRackMutation(Number(racksId))
   const { data: rack } = useSuspenseQuery(singleRackQueryOptions(racksId))
   const { data: teams } = useSuspenseQuery(teamsQueryOptions)
   const [isEditing, setIsEditing] = useState(false)
@@ -49,7 +49,7 @@ function RacksDetailsPage() {
       tags: rack.tags,
       machines: rack.machines,
     },
-    onSubmit: async ({ value }) => {
+    onSubmit: ({ value }) => {
       updateRack.mutate(value, {
         onSuccess: () => {
           toast.success('Rack updated successfully')
@@ -142,7 +142,7 @@ function RacksDetailsPage() {
                         field.name === 'tags' ? (
                           <form.Field
                             name="tags"
-                            children={(formField) => (
+                            children={() => (
                               <TagList
                                 tags={fieldValue as Array<TagItem>}
                                 type="edit"

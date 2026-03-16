@@ -22,6 +22,7 @@ export interface ApiInventoryInfoItem {
   category_name: string | null
   location_link: string
   active_rentals: Array<any>
+  room_id: number | null
 }
 
 export interface ApiUpdateInventory {

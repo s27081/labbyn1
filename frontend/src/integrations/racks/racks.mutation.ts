@@ -17,7 +17,7 @@ export async function useCreateRackMutation(rackData: {
   return data
 }
 
-export const useDeletRackMutation = (rackId: string | number) => {
+export const useDeletRackMutation = (rackId: number) => {
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -29,7 +29,7 @@ export const useDeletRackMutation = (rackId: string | number) => {
   })
 }
 
-export const useUpdateRackMutation = (rackId: string | number) => {
+export const useUpdateRackMutation = (rackId: number) => {
   const queryClient = useQueryClient()
 
   return useMutation({
