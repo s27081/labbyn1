@@ -41,20 +41,31 @@ function InventoryDetailsPage() {
   const { data: inventory } = useSuspenseQuery(
     inventoryItemInfoQueryOptions(inventoryId),
   )
+  
   const { data: machines } = useSuspenseQuery(machinesQueryOptions)
   const { data: teams } = useSuspenseQuery(teamsQueryOptions)
   const { data: labs } = useSuspenseQuery(labsBaseQueryOptions)
   const { data: category } = useSuspenseQuery(categoryListQueryOptions)
 
-  
   const updateItem = useUpdateInventoryMutation(inventoryId)
   const deleteItem = useDeleteInventoryMutation(inventoryId)
   const [isEditing, setIsEditing] = useState(false)
 
   const form = useForm({
-    defaultValues: { ...inventory },
+    defaultValues: { ...inventory, machine_id: inventory.machine_id},
     onSubmit: ({ value }) => {
-      updateItem.mutate( value,
+      const payload: ApiUpdateInventory = {
+        name: value.name,
+        quantity: Number(value.total_quantity || 0),
+        team_id: value.team_id ? Number(value.team_id) : null,
+        //TO DO: disscuss inventory assigment and rentals
+        localization_id: inventory.room_id,
+        machine_id: value.machine_id ? Number(value.machine_id) : null,
+        category_id: Number(value.category_id || 0),
+        rental_status: value.rental_status ?? true,
+        rental_id: value.rental_id ? Number(value.rental_id) : null
+      }
+      updateItem.mutate( payload,
         { 
           onSuccess: () => {
             toast.success('Inventory updated successfully')

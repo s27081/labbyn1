@@ -35,16 +35,15 @@ export const useUpdateInventoryMutation = (itemId: string | number) => {
   })
 }
 
-export const useDeleteInventoryMutation = () => {
+export const useDeleteInventoryMutation = (itemId: string | number) => {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationKey: ['delete-item'],
-    mutationFn: async (itemId: string | number) => {
+    mutationFn: async () => {
       await api.delete(PATHS.DETAIL(itemId))
     },
     onSuccess: () => {
-      toast.success('Item removed from inventory')
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
     },
   })

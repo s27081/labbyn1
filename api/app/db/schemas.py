@@ -1022,11 +1022,13 @@ class InventoryDetailResponse(BaseModel):
     name: str
     total_quantity: int
     in_stock_quantity: int
-    team_id: int
+    team_id: Optional[int]
     team_name: str
     room_name: str
+    room_id: Optional[int]
     machine_info: Optional[str]
     category_name: str
+    category_id: Optional[int]
     location_link: str
     active_rentals: List[RentalInfo] = []
 

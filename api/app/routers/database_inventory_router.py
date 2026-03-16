@@ -117,15 +117,18 @@ def get_inventory_details(
         results.append(
             {
                 "id": item.id,
-                "name": item.name,
-                "total_quantity": item.quantity,
-                "in_stock_quantity": item.quantity - total_rented,
-                "team_name": item.team.name if item.team else "N/A",
-                "room_name": item.room.name if item.room else "N/A",
-                "machine_info": item.machine.name if item.machine else "None",
-                "category_name": item.category.name if item.category else "N/A",
-                "location_link": f"/labs/{item.localization_id}",
-                "active_rentals": active_rentals_list,
+            "name": item.name,
+            "total_quantity": item.quantity,
+            "in_stock_quantity": item.quantity - total_rented,
+            "team_id": item.team_id,
+            "team_name": item.team.name if item.team else "N/A",
+            "room_name": item.room.name if item.room else "N/A",
+            "room_id": item.room.id if item.room else 1,
+            "machine_info": item.machine.name if item.machine else "None",
+            "category_id": item.category_id,
+            "category_name": item.category.name if item.category else "N/A",
+            "location_link": f"/labs/{item.localization_id}",
+            "active_rentals": active_rentals_list,
             }
         )
 
@@ -231,7 +234,9 @@ def get_inventory_item_details(
         "team_id": item.team_id,
         "team_name": item.team.name if item.team else "N/A",
         "room_name": item.room.name if item.room else "N/A",
+        "room_id": item.room.id if item.room else 1,
         "machine_info": item.machine.name if item.machine else "None",
+        "category_id": item.category_id,
         "category_name": item.category.name if item.category else "N/A",
         "location_link": f"/labs/{item.localization_id}",
         "active_rentals": active_rentals_list,
