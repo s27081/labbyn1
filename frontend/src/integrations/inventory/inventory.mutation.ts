@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import type { ApiUpdateInventory } from './inventory.types'
 import api from '@/lib/api'
 
 const PATHS = {
@@ -23,12 +24,11 @@ export const useUpdateInventoryMutation = (itemId: string | number) => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (updateData: any) => {
-      const { data } = await api.put(PATHS.DETAIL(itemId), updateData)
-      return data
+    mutationKey: ['update-item'],
+    mutationFn: async (updateData: ApiUpdateInventory) => {
+      await api.patch(PATHS.DETAIL(itemId), updateData)
     },
     onSuccess: () => {
-      toast.success('Inventory item updated')
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
       queryClient.invalidateQueries({ queryKey: ['inventory', String(itemId)] })
     },
@@ -39,6 +39,7 @@ export const useDeleteInventoryMutation = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
+    mutationKey: ['delete-item'],
     mutationFn: async (itemId: string | number) => {
       await api.delete(PATHS.DETAIL(itemId))
     },

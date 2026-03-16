@@ -228,6 +228,7 @@ def get_inventory_item_details(
         "name": item.name,
         "total_quantity": item.quantity,
         "in_stock_quantity": item.quantity - total_rented,
+        "team_id": item.team_id,
         "team_name": item.team.name if item.team else "N/A",
         "room_name": item.room.name if item.room else "N/A",
         "machine_info": item.machine.name if item.machine else "None",

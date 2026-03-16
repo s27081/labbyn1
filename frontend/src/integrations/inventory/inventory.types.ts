@@ -24,6 +24,17 @@ export interface ApiInventoryInfoItem {
   active_rentals: Array<any>
 }
 
+export interface ApiUpdateInventory {
+  name?: string
+  quantity?: number
+  team_id?: number | null
+  localization_id?: number
+  machine_id?: number | null
+  category_id?: number
+  rental_status?: boolean
+  rental_id?: number | null
+}
+
 export type ApiInventoryItem = InventoryResponse
 export type ApiInventoryResponse = Array<InventoryResponse>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useSuspenseQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm, useStore } from '@tanstack/react-form'
+import { useForm } from '@tanstack/react-form'
 import {
   AlarmClock,
   ArrowDownUp,
@@ -91,27 +91,6 @@ const queryClient = useQueryClient()
   }
   const [isEditing, setIsEditing] = useState(false)
 
-
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
-
-  const handleListInputChange = (
-    field: string,
-    index: number,
-    key: string,
-    value: string,
-  ) => {
-    setFormData((prev) => {
-      const list = [...(prev[field as keyof typeof prev] as Array<any>)]
-      list[index] = { ...list[index], [key]: value }
-      return { ...prev, [field]: list }
-    })
-  }
-
   const form = useForm({
     defaultValues: { ...machine },
     onSubmit: ({ value }) => {
@@ -120,11 +99,13 @@ const queryClient = useQueryClient()
           toast.success('Machine updated successfully')
           setIsEditing(false)
         },
+        onError: (error: Error) => {
+            toast.error('Update failed', { description: error.message })
+          }
       })
     },
   })
 
-  const formValues = useStore(form.store, (state) => state.values)
   const [selectedTeam, setSelectedTeam] = useState<number | undefined>(machine.team_id);
 const [selectedRoom, setSelectedRoom] = useState<number | undefined>(machine.room_id); 
 const [selectedRack, setSelectedRack] = useState<number | undefined>(machine.rack_id);

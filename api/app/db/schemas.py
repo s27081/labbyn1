@@ -848,7 +848,6 @@ class MachineInRackResponse(BaseModel):
     Includes shelf information.
     """
 
-    id: int
     name: str
     ip_address: Optional[str]
     mac_address: Optional[str]
@@ -1023,6 +1022,7 @@ class InventoryDetailResponse(BaseModel):
     name: str
     total_quantity: int
     in_stock_quantity: int
+    team_id: int
     team_name: str
     room_name: str
     machine_info: Optional[str]
@@ -1274,12 +1274,14 @@ class RackUpdate(BaseModel):
 
     name: Optional[str] = Field(None, max_length=100, description="Name of the rack")
     room_id: Optional[int] = Field(None, description="Location of the rack")
-    layout_id: Optional[int] = Field(
-        None, description="ID of the layout coordinates for this rack"
-    )
     team_id: Optional[int] = Field(
         None, description="ID of the team that owns this rack (if applicable)"
     )
+    tag_ids: Optional[List[int]] = Field(
+        default=[], description="List of existing Tag IDs to associate with this rack"
+    )
+    machines: Optional[List[Any]] = Field(
+        default=[], description="List of existing machines with associated shelf orders to place in the rack")
 
 
 class RackResponse(RackBase):

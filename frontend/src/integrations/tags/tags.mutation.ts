@@ -26,6 +26,7 @@ export function useAttachTagMutation() {
       api.post(PATHS.ASSIGN, tagData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['machines'] })
+      queryClient.invalidateQueries({ queryKey: ['racks'] })
     },
   })
 }
@@ -39,6 +40,7 @@ export function useDetachTagMutation() {
       api.post(PATHS.DETACH, tagData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['machines'] })
+      queryClient.invalidateQueries({ queryKey: ['racks'] })
     },
   })
 }
