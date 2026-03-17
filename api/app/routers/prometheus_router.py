@@ -102,6 +102,7 @@ async def websocket_endpoint(
     db: AsyncSession = Depends(get_async_db),
     user_manager=Depends(get_user_manager),
     strategy=Depends(get_database_strategy),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """WebSocket endpoint to push metrics data to front-end.
 
@@ -111,6 +112,9 @@ async def websocket_endpoint(
     :param instance: Optional instance filter
     :return: Fetch ws data
     """
+
+    ctx.require_user()
+
     manager.websocket = ws
     await ws.accept()
 

@@ -210,9 +210,15 @@ async def get_history_by_id(
     :return: History object.
     """
     ctx.require_user()
-    stmt = select(History).filter(History.id == history_id)
+    stmt = (
+        select(History)
+        .join(User, History.user_id == User.id)
+        .options(joinedload(History.user))
+        .filter(History.id == history_id)
+    )
+    stmt = ctx.team_filter(stmt, User)
     result = await db.execute(stmt)
-    history = result.scalar_one_or_none()
+    history = result.unique().scalar_one_or_none()
 
     if not history:
         raise HTTPException(

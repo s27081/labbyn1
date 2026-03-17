@@ -226,7 +226,6 @@ async def update_user(
     :param ctx: Request context for user and team info
     :return: Updated User.
     """
-    ctx.require_group_admin()
     async with acquire_lock(f"user_lock:{user_id}"):
         stmt = select(User).options(joinedload(User.teams)).where(User.id == user_id)
         result = await db.execute(stmt)
@@ -236,7 +235,7 @@ async def update_user(
             raise HTTPException(404, detail="User not found")
 
         user_team_ids = {m.team_id for m in user.teams}
-        if not ctx.is_admin and ctx.team_id not in user_team_ids:
+        if not ctx.is_admin and not any(tid in ctx.team_ids for tid in user_team_ids):
             raise HTTPException(403, detail="Access denied to user from another team")
 
         data = user_data.model_dump(exclude_unset=True)
@@ -246,22 +245,31 @@ async def update_user(
                 raise HTTPException(
                     403, detail="Insufficient permissions to assign ADMIN role"
                 )
-            if "team_ids" in data:
-                data.pop("team_ids")
+            data.pop("team_ids", None)
 
         if "password" in data:
             user.hashed_password = hash_password(data.pop("password"))
 
+        # OBSŁUGA TEAMÓW (Tylko dla Admina)
         if "team_ids" in data and ctx.is_admin:
-            new_teams = data.pop("team_ids")
+            new_team_ids = data.pop("team_ids")
+
             await db.execute(delete(UsersTeams).where(UsersTeams.user_id == user.id))
-            for t_id in new_teams:
-                db.add(UsersTeams(user_id=user.id, team_id=t_id))
+
+            new_memberships = [
+                UsersTeams(user_id=user.id, team_id=t_id) for t_id in new_team_ids
+            ]
+
+            db.add_all(new_memberships)
+
+            user.teams = []
 
         for k, v in data.items():
             if hasattr(user, k):
                 setattr(user, k, v)
+
         try:
+            await db.flush()
             await db.commit()
 
             stmt_final = (
@@ -273,6 +281,7 @@ async def update_user(
             user = res_final.unique().scalar_one()
 
             return get_masked_user_model(user, ctx, detailed=True)
+
         except Exception as e:
             await db.rollback()
             raise HTTPException(
@@ -408,6 +417,13 @@ async def update_user_team_role(
         )
 
     target_membership.is_group_admin = role_data.is_group_admin
+
+    if role_data.is_group_admin:
+        stmt_user = select(User).where(User.id == user_id)
+        res_user = await db.execute(stmt_user)
+        user_to_update = res_user.scalar_one_or_none()
+        if user_to_update and user_to_update.user_type == UserType.USER:
+            user_to_update.user_type = UserType.GROUP_ADMIN
 
     try:
         await db.commit()

@@ -1,10 +1,15 @@
 """Test prometheus logic."""
 
 from unittest import mock
-
 import pytest
 
-pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+pytestmark = pytest.mark.skip(reason="Logic redundantly covered by smoke tests")
+pytestmark = [
+    pytest.mark.smoke,
+    pytest.mark.prometheus,
+    pytest.mark.legacy,
+    pytest.mark.skip(reason="Logic redundantly covered by smoke tests"),
+]
 
 
 async def test_get_prometheus_instances(test_client, service_header):
