@@ -2,15 +2,17 @@
 
 from typing import List
 
-from app.database import get_db
-from app.db.models import Tags, Machines, Rack, Rooms, Documentation
-from app.db.schemas import TagsCreate, TagsUpdate, TagsResponse, TagsAssignment
-from app.utils.redis_service import acquire_lock
-from app.auth.dependencies import RequestContext
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter()
+from app.auth.dependencies import RequestContext
+from app.database import get_async_db
+from app.db.models import Documentation, Machines, Rack, Rooms, Tags
+from app.db.schemas import TagsAssignment, TagsCreate, TagsResponse, TagsUpdate
+from app.utils.redis_service import acquire_lock
+
+router = APIRouter(prefix="/db", tags=["Tags"])
 
 ENTITY_MAP = {
     "machine": Machines,
@@ -21,123 +23,175 @@ ENTITY_MAP = {
 
 
 @router.get(
-    "/db/tags/",
+    "/tags",
     response_model=List[TagsResponse],
-    tags=["Tags"],
 )
-def get_tags(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
-    """
-    Get all tags from DB
+async def get_tags(
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
+):
+    """Get all tags.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of all tags
+    :return: List of all tags.
     """
     ctx.require_user()
-    query = db.query(Tags).all()
-    return query
+    stmt = select(Tags)
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
-@router.post("/db/tags/assign", status_code=status.HTTP_200_OK, tags=["Tags"])
+@router.post("/tags/assign", status_code=status.HTTP_200_OK)
 async def assign_tag(
-    data: TagsAssignment, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    data: TagsAssignment,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
+    """Assign tag to object.
+
+    Can be used for machine, rack, room and documentation objects
+
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: List of all tags.
+    """
     ctx.require_user()
 
     model = ENTITY_MAP.get(data.entity_type.lower())
     if not model:
         raise HTTPException(status_code=400, detail="Invalid entity type")
 
-    query = db.query(model).filter(model.id == data.entity_id)
+    async with acquire_lock(f"tag_assign_{data.entity_type}:{data.entity_id}"):
+        stmt = select(model).filter(model.id == data.entity_id)
+        if data.entity_type.lower() != "documentation":
+            stmt = ctx.team_filter(stmt, model)
 
-    if data.entity_type.lower() == "documentation":
-        entity = query.first()
-    else:
-        entity = ctx.team_filter(query, model).first()
+        result = await db.execute(stmt)
+        entity = result.scalar_one_or_none()
 
-    if not entity:
-        raise HTTPException(
-            status_code=404, detail=f"{data.entity_type} not found or access denied"
-        )
+        if not entity:
+            raise HTTPException(status_code=404, detail="Entity not found")
 
-    tag = db.query(Tags).filter(Tags.id == data.tag_id).first()
-    if not tag:
-        raise HTTPException(status_code=404, detail="Tag not found")
+        tag_stmt = select(Tags).where(Tags.id.in_(data.tag_ids))
+        tag_res = await db.execute(tag_stmt)
+        tags_to_add = tag_res.scalars().all()
 
-    if tag not in entity.tags:
-        entity.tags.append(tag)
-        db.commit()
+        if not tags_to_add:
+            raise HTTPException(status_code=404, detail="No valid tags found")
 
-    return {f"Tag {tag.name} assigned to {data.entity_type}"}
+        await db.refresh(entity, ["tags"])
+
+        changed = False
+        for tag in tags_to_add:
+            if tag not in entity.tags:
+                entity.tags.append(tag)
+                changed = True
+
+        if changed:
+            await db.commit()
+            return {"message": f"Tags assigned successfully to {data.entity_type}"}
+
+        return {"message": "Tags were already assigned"}
 
 
-@router.post("/db/tags/detach", status_code=status.HTTP_200_OK, tags=["Tags"])
+@router.post("/tags/detach", status_code=status.HTTP_200_OK)
 async def detach_tag(
-    data: TagsAssignment, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    data: TagsAssignment,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
+    """Detach tag from object.
+
+    Can be used for machine, rack, room and documentation objects
+
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: List of all tags.
+    """
     ctx.require_user()
 
     model = ENTITY_MAP.get(data.entity_type.lower())
-    entity = db.query(model).filter(model.id == data.entity_id).first()
+    if not model:
+        raise HTTPException(status_code=400, detail="Invalid entity type")
 
-    if not entity:
-        raise HTTPException(status_code=404, detail="Entity not found")
+    async with acquire_lock(f"tag_assign_{data.entity_type}:{data.entity_id}"):
+        stmt = select(model).filter(model.id == data.entity_id)
+        result = await db.execute(stmt)
+        entity = result.scalar_one_or_none()
 
-    tag = db.query(Tags).filter(Tags.id == data.tag_id).first()
+        if not entity:
+            raise HTTPException(status_code=404, detail="Entity not found")
 
-    if tag in entity.tags:
-        entity.tags.remove(tag)
-        db.commit()
+        if not data.tag_ids:
+            raise HTTPException(status_code=400, detail="No tag IDs provided")
 
-    return {f"Tag {tag.name} detached from {data.entity_type}"}
+        target_tag_id = data.tag_ids[0]
+
+        tag_stmt = select(Tags).filter(Tags.id == target_tag_id)
+        tag_res = await db.execute(tag_stmt)
+        tag = tag_res.scalar_one_or_none()
+
+        if tag:
+            await db.refresh(entity, ["tags"])
+
+            if tag in entity.tags:
+                entity.tags.remove(tag)
+                await db.commit()
+
+        return {
+            "message": f"Tag {tag.name if tag else 'Unknown'} "
+            f"detached from {data.entity_type}"
+        }
 
 
 @router.post(
-    "/db/tags/",
+    "/tags",
     response_model=TagsResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Tags"],
 )
-def create_tag(
+async def create_tag(
     tag_data: TagsCreate,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create new tag
+    """Create new tag.
+
     :param data: Tag data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: New tag item
+    :return: New tag item.
     """
     ctx.require_group_admin()
     obj = Tags(**tag_data.model_dump())
     db.add(obj)
-    db.commit()
-    db.refresh(obj)
+    await db.commit()
+    await db.refresh(obj)
 
     return obj
 
 
 @router.get(
-    "/db/tags/{tag_id}",
+    "/tags/{tag_id}",
     response_model=TagsResponse,
-    tags=["Tags"],
 )
-def get_tag_by_id(
+async def get_tag_by_id(
     tag_id: int,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Get specific tag from DB by ID
+    """Get specific tag by ID.
+
     :param tag_id: Tag ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Tag object
+    :return: Tag object.
     """
     ctx.require_user()
-    query = db.query(Tags).filter(Tags.id == tag_id)
-    tag = query.first()
+    stmt = select(Tags).filter(Tags.id == tag_id)
+    result = await db.execute(stmt)
+    tag = result.scalar_one_or_none()
+
     if not tag:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
@@ -145,65 +199,70 @@ def get_tag_by_id(
     return tag
 
 
-@router.put(
-    "/db/tags/{tag_id}",
+@router.patch(
+    "/tags/{tag_id}",
     response_model=TagsResponse,
-    tags=["Tags"],
 )
 async def update_tag(
     tag_id: int,
     tag_data: TagsUpdate,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update tag data
+    """Update tag data.
+
     :param tag_id: Tag ID
     :param tag_data: Tag data schema
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Updated tag
+    :return: Updated tag.
     """
     ctx.require_group_admin()
     async with acquire_lock(f"tag_lock:{tag_id}"):
-        query = db.query(Tags).filter(Tags.id == tag_id)
-        tag = query.first()
+        stmt = select(Tags).filter(Tags.id == tag_id)
+        result = await db.execute(stmt)
+        tag = result.scalar_one_or_none()
+
         if not tag:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
             )
+
         update_data = tag_data.model_dump(exclude_unset=True)
         for k, v in update_data.items():
             setattr(tag, k, v)
-        db.commit()
-        db.refresh(tag)
+
+        await db.commit()
+        await db.refresh(tag)
         return tag
 
 
 @router.delete(
-    "/db/tags/{tag_id}",
+    "/tags/{tag_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Tags"],
 )
 async def delete_tag(
     tag_id: int,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete tag
+    """Delete tag.
+
     :param tag_id: Tag ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: None.
     """
     ctx.require_group_admin()
     async with acquire_lock(f"tag_lock:{tag_id}"):
-        query = db.query(Tags).filter(Tags.id == tag_id)
-        tag = query.first()
+        stmt = select(Tags).filter(Tags.id == tag_id)
+        result = await db.execute(stmt)
+        tag = result.scalar_one_or_none()
+
         if not tag:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
             )
-        db.delete(tag)
-        db.commit()
+
+        await db.delete(tag)
+        await db.commit()

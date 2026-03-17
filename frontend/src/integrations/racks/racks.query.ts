@@ -33,7 +33,7 @@ export const racksListQueryOptions = queryOptions({
 // Fetch single rack by ID
 export const singleRackQueryOptions = (rackId: string) =>
   queryOptions({
-    queryKey: ['rack', rackId],
+    queryKey: ['racks', 'rack', rackId],
     queryFn: async () => {
       const { data } = await api.get<ApiRackDetailItem>(PATHS.SINGLE(rackId))
       return data

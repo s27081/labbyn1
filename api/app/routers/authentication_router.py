@@ -1,7 +1,11 @@
+"""Router for authentication non-default methods."""
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.database import get_db
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.auth.auth_config import fastapi_users
+from app.database import get_async_db
 from app.db.models import User
 from app.db.schemas import FirstChangePasswordRequest
 from app.utils.security import hash_password
@@ -15,16 +19,28 @@ current_user = fastapi_users.current_user(active=True)
 async def setup_first_password(
     data: FirstChangePasswordRequest,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
+    """Setup first password.
 
+    After creating user with automatically assigned password, the user needs
+    to change it at his first login.
+
+    :param data: Password change request data
+    :param user: Active user in database session
+    :param db: Active database session
+    :return: Success or error message
+    """
     if not user.force_password_change:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password change not required.",
         )
 
-    db_user = db.query(User).filter(User.id == user.id).first()
+    stmt = select(User).where(User.id == user.id)
+    result = await db.execute(stmt)
+    db_user = result.scalar_one_or_none()
+
     if not db_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -34,6 +50,6 @@ async def setup_first_password(
     db_user.hashed_password = hash_password(data.new_password)
     db_user.force_password_change = False
     db.add(db_user)
-    db.commit()
+    await db.commit()
 
     return {"message": "Password has been set successfully."}

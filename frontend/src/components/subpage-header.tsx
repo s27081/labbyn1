@@ -10,7 +10,7 @@ export interface SubpageHeaderProps {
   isEditing?: boolean
   editValue?: string
   onEditChange?: (val: string) => void
-  onSave?: () => void
+  onSave?: (e: React.MouseEvent) => void
   onCancel?: () => void
   onStartEdit?: () => void
   onDelete?: () => void
@@ -65,7 +65,7 @@ export function SubpageHeader({
               <Button onClick={onCancel} variant="secondary">
                 <X /> Cancel
               </Button>
-              <Button onClick={onSave} variant="default">
+              <Button onClick={onSave} type="button" variant="default">
                 <Check /> Save
               </Button>
             </ButtonGroup>
