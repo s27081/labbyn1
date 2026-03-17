@@ -16,4 +16,9 @@ export interface ApiShelfMachineItem {
   machine_url: string | null
 }
 
+export interface ApiShelfCreate {
+  name: string
+  order: number
+}
+
 export type ApiShelvesResponse = Array<ApiShelfItem>

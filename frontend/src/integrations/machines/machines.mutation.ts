@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import type {
   AutoDiscoverPayload,
   MachineUpdate,
@@ -97,16 +96,23 @@ export const useUpdateMachineMutation = (machineId: string | number) => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (machineData: MachineUpdate) => {
-      const { data } = await api.put(PATHS.DETAIL(machineId), machineData)
-      return data
-    },
+    mutationKey: ['update-machine'],
+    mutationFn: (machineData: MachineUpdate) =>
+      api.patch(PATHS.DETAIL(machineId), machineData),
     onSuccess: () => {
-      toast.success('Machine updated successfully')
       queryClient.invalidateQueries({ queryKey: ['machines'] })
-      queryClient.invalidateQueries({
-        queryKey: ['machines', String(machineId)],
-      })
+    },
+  })
+}
+
+export const useDeleteMachineMutation = (machineId: string | number) => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ['delete-machine'],
+    mutationFn: () => api.delete(PATHS.DETAIL(machineId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['machines'] })
     },
   })
 }

@@ -34,7 +34,7 @@ export const machineSpecQueryOptions = (machineId: string) =>
 // Fetch single machine by id - full info
 export const machineSpecInfoQueryOptions = (machineId: string) =>
   queryOptions({
-    queryKey: ['machines', 'spec', 'info', machineId],
+    queryKey: ['machines', machineId],
     queryFn: async () => {
       const { data } = await api.get<ApiMachineInfo>(
         PATHS.SINGLE_INFO(machineId),

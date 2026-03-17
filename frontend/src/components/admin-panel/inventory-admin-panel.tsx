@@ -67,7 +67,7 @@ export const columns: Array<ColumnDef<InventoryItem>> = [
     id: 'actions',
     cell: ({ row }) => {
       const inventory = row.original
-      const deleteItem = useDeleteInventoryMutation()
+      const deleteItem = useDeleteInventoryMutation(inventory.id)
 
       return (
         <DropdownMenu>
@@ -90,7 +90,7 @@ export const columns: Array<ColumnDef<InventoryItem>> = [
 
             <DropdownMenuItem
               className="text-destructive"
-              onClick={() => deleteItem.mutate(inventory.id)} //
+              onClick={() => deleteItem.mutate()} //
             >
               Delete Item
             </DropdownMenuItem>

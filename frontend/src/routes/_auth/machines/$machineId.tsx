@@ -1,10 +1,10 @@
-import { useState } from 'react'
-import { Link, createFileRoute } from '@tanstack/react-router'
-import { useSuspenseQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { useForm } from '@tanstack/react-form'
 import {
   AlarmClock,
   ArrowDownUp,
-  Book,
   Box,
   Cable,
   Cctv,
@@ -18,90 +18,153 @@ import {
   MemoryStick,
   MonitorCog,
   Network,
+  Plus,
   Save,
   StickyNote,
-  Users,
+  Trash2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { TagItem } from '@/integrations/tags/tags.types'
-import { InputChecklist } from '@/components/input-checklist'
-// import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { machineSpecInfoQueryOptions } from '@/integrations/machines/machines.query'
-import { TextField } from '@/components/text-field'
-import { useUpdateMachineMutation } from '@/integrations/machines/machines.mutation'
+import {
+  useDeleteMachineMutation,
+  useUpdateMachineMutation,
+} from '@/integrations/machines/machines.mutation'
 import { SubPageTemplate } from '@/components/subpage-template'
 import { SubpageCard } from '@/components/subpage-card'
 import { TagList } from '@/components/tag-list'
 import { addTextToString, convertTimestampToDate } from '@/utils'
 import { AutoDiscovertDialog } from '@/components/auto-discovery-dialog'
 import { teamsQueryOptions } from '@/integrations/teams/teams.query'
+import { labsBaseQueryOptions } from '@/integrations/labs/labs.query'
+import { racksBaseListQueryOptions } from '@/integrations/racks/racks.query'
+import { singleShelfQueryOptions } from '@/integrations/shelves/shelves.query'
+import { useCreateShelfMutation } from '@/integrations/shelves/shelves.mutation'
 
 export const Route = createFileRoute('/_auth/machines/$machineId')({
   component: MachineDetailsPage,
 })
 
 function MachineDetailsPage() {
+  const router = useRouter()
   const { machineId } = Route.useParams()
   const { data: machine } = useSuspenseQuery(
     machineSpecInfoQueryOptions(machineId),
   )
   const { data: teams } = useSuspenseQuery(teamsQueryOptions)
+  const { data: labs } = useSuspenseQuery(labsBaseQueryOptions)
+  const { data: racks } = useSuspenseQuery(racksBaseListQueryOptions)
+
   const updateMachine = useUpdateMachineMutation(machineId)
-
+  const deleteMachine = useDeleteMachineMutation(machineId)
+  const { mutate: createShelf } = useCreateShelfMutation()
+  // TO DO: make shelf creation auto select the created shelf for the machine
+  const handleShelfCreation = (rackId: number) => {
+    const nextOrder = (shelves?.length ?? 0) + 1
+    createShelf(
+      {
+        rackId: rackId,
+        shelfData: {
+          name: `Shelf ${nextOrder}`,
+          order: nextOrder,
+        },
+      },
+      {
+        onSuccess: (data) => {
+          console.log(data)
+        },
+      },
+    )
+  }
   const [isEditing, setIsEditing] = useState(false)
-  const [formData, setFormData] = useState({ ...machine })
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
+  const form = useForm({
+    defaultValues: { ...machine },
+    onSubmit: ({ value }) => {
+      updateMachine.mutate(value, {
+        onSuccess: () => {
+          toast.success('Machine updated successfully')
+          setIsEditing(false)
+        },
+        onError: (error: Error) => {
+          toast.error('Update failed', { description: error.message })
+        },
+      })
+    },
+  })
 
-  const handleListInputChange = (
-    field: string,
-    index: number,
-    key: string,
-    value: string,
-  ) => {
-    setFormData((prev) => {
-      const list = [...(prev[field as keyof typeof prev] as Array<any>)]
-      list[index] = { ...list[index], [key]: value }
-      return { ...prev, [field]: list }
-    })
-  }
+  const [selectedTeam, setSelectedTeam] = useState<number | null | undefined>(
+    Number(machine.team_id),
+  )
+  const [selectedRoom, setSelectedRoom] = useState<number | null | undefined>(
+    Number(machine.room_id),
+  )
+  const [selectedRack, setSelectedRack] = useState<number | null | undefined>(
+    Number(machine.rack_id),
+  )
 
-  const handleSave = () => {
-    updateMachine.mutate(formData, {
-      onSuccess: () => setIsEditing(false),
-    })
-    setIsEditing(false)
-  }
+  useEffect(() => {
+    if (isEditing) {
+      setSelectedTeam(Number(machine.team_id))
+      setSelectedRoom(machine.room_id)
+      setSelectedRack(machine.rack_id)
+      form.reset()
+    }
+  }, [isEditing, machine])
 
+  const availableRooms = labs.filter(
+    (lab) => Number(lab.team_id) === Number(selectedTeam),
+  )
+
+  const availableRacks = racks.filter(
+    (rack) =>
+      Number(rack.team_id) === Number(selectedTeam) &&
+      Number(rack.room_id) === Number(selectedRoom),
+  )
+
+  const { data: shelves, isLoading: isLoadingShelves } = useQuery({
+    ...(selectedRack != null
+      ? singleShelfQueryOptions(String(selectedRack))
+      : { queryKey: ['shelf'], queryFn: () => [] }),
+    enabled: selectedRack != null,
+  })
   return (
     <SubPageTemplate
       headerProps={{
         title: machine.name,
         type: 'editable',
         isEditing: isEditing,
-        editValue: formData.name,
-        onEditChange: (val) => setFormData((prev) => ({ ...prev, name: val })),
-        onSave: () => handleSave,
+        editValue: form.state.values.name,
+        onEditChange: (val) => form.setFieldValue('name', val),
+        onSave: (e) => {
+          e.preventDefault()
+          form.handleSubmit()
+        },
         onCancel: () => {
-          setFormData({ ...machine })
+          form.reset()
           setIsEditing(false)
         },
         onStartEdit: () => setIsEditing(true),
-        onDelete: () => {},
-        // deleteMachine.mutate({
-        //  onSuccess: () => {
-        //    toast.success('Machine deleted successfully')
-        //    router.history.back()
-        //  },
-        //  onError: (error: Error) => {
-        //    toast.error('Operation failed', { description: error.message })
-        //  },
-        // }),
+        onDelete: () => {
+          deleteMachine.mutate(undefined, {
+            onSuccess: () => {
+              toast.success('Machine deleted successfully')
+              router.history.back()
+            },
+            onError: (error: Error) => {
+              toast.error('Operation failed', { description: error.message })
+            },
+          })
+        },
       }}
       content={
         <>
@@ -162,100 +225,200 @@ function MachineDetailsPage() {
                     icon: AlarmClock,
                   },
                   { label: 'Tags', name: 'tags' as const, icon: Box },
-                  { label: 'Team', name: 'team_name' as const, icon: Users },
-                ].map((field, index, array) => {
-                  const rawValue = machine[field.name]
+                ].map((formFiled, idx, array) => {
+                  const rawValue = machine[formFiled.name]
 
                   return (
                     <div
-                      key={field.name}
+                      key={formFiled.name}
                       className={`flex flex-col gap-1.5 py-3 ${
-                        index !== array.length - 1
+                        idx !== array.length - 1
                           ? 'border-b border-border/50'
                           : ''
                       }`}
                     >
                       <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-tight text-muted-foreground/80">
-                        <field.icon className="h-3.5 w-3.5" />
-                        {field.label}
+                        <formFiled.icon className="h-3.5 w-3.5" />
+                        {formFiled.label}
                       </div>
                       <div className="flex flex-col gap-2 min-h-8 justify-center">
                         {isEditing ? (
                           <>
-                            {field.name === 'tags' ? (
+                            {formFiled.name === 'tags' ? (
                               <TagList
                                 tags={rawValue as Array<TagItem>}
                                 type="edit"
+                                entityType="machine"
+                                entityId={machineId}
                               />
-                            ) : field.name === 'team_name' ? (
-                              <InputChecklist
-                                items={teams}
-                                value={formData.team_name}
-                                onChange={(newTeamName: string) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    team_name: newTeamName,
-                                  }))
-                                }
+                            ) : formFiled.name === 'cpus' ? (
+                              <form.Field
+                                name="cpus"
+                                children={(field) => {
+                                  const cpus = field.state.value
+                                  return (
+                                    <div className="space-y-2">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-fit"
+                                        onClick={() =>
+                                          field.handleChange([
+                                            ...cpus,
+                                            {
+                                              id: 0,
+                                              machine_id: Number(machineId),
+                                              name: '',
+                                            },
+                                          ])
+                                        }
+                                      >
+                                        <Plus className="h-4 w-4 mr-2" /> Add
+                                        CPU
+                                      </Button>
+                                      {cpus.map((cpu, index) => (
+                                        <div
+                                          key={cpu.id || index}
+                                          className="flex gap-2 items-center"
+                                        >
+                                          <Input
+                                            value={cpu.name || ''}
+                                            onChange={(e) => {
+                                              const newCpus = [...cpus]
+                                              newCpus[index] = {
+                                                ...newCpus[index],
+                                                name: e.target.value,
+                                              }
+                                              field.handleChange(newCpus)
+                                            }}
+                                            className="h-8 text-sm flex-1"
+                                            placeholder="CPU Name"
+                                          />
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() =>
+                                              field.handleChange(
+                                                cpus.filter(
+                                                  (_: any, i: number) =>
+                                                    i !== index,
+                                                ),
+                                              )
+                                            }
+                                          >
+                                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                }}
                               />
-                            ) : field.name === 'cpus' ? (
-                              formData.cpus.map((cpu: any, idx: number) => (
-                                <Input
-                                  key={cpu.id || idx}
-                                  value={cpu.name}
-                                  onChange={(e) =>
-                                    handleListInputChange(
-                                      'cpus',
-                                      idx,
-                                      'name',
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="h-8 text-sm"
-                                  placeholder="CPU Name"
-                                />
-                              ))
-                            ) : field.name === 'disks' ? (
-                              formData.disks.map((disk: any, idx: number) => (
-                                <div
-                                  key={disk.id || idx}
-                                  className="flex gap-2 items-center"
-                                >
-                                  <Input
-                                    value={disk.name}
-                                    onChange={(e) =>
-                                      handleListInputChange(
-                                        'disks',
-                                        idx,
-                                        'name',
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="h-8 text-sm flex-1"
-                                    placeholder="Disk Name"
-                                  />
-                                  <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-1 rounded font-bold shrink-0">
-                                    {addTextToString(disk.capacity, 'GB')}
-                                  </span>
-                                </div>
-                              ))
+                            ) : formFiled.name === 'disks' ? (
+                              <form.Field
+                                name="disks"
+                                children={(field) => {
+                                  const disks = field.state.value
+                                  return (
+                                    <div className="space-y-2">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-fit"
+                                        onClick={() =>
+                                          field.handleChange([
+                                            ...disks,
+                                            {
+                                              id: 0,
+                                              machine_id: Number(machineId),
+                                              name: '',
+                                              capacity: '',
+                                            },
+                                          ])
+                                        }
+                                      >
+                                        <Plus className="h-4 w-4 mr-2" /> Add
+                                        Disk
+                                      </Button>
+                                      {disks.map((disk: any, index: number) => (
+                                        <div
+                                          key={disk.id || index}
+                                          className="flex gap-2 items-center"
+                                        >
+                                          <Input
+                                            value={disk.name || ''}
+                                            onChange={(e) => {
+                                              const newDisks = [...disks]
+                                              newDisks[index] = {
+                                                ...newDisks[index],
+                                                name: e.target.value,
+                                              }
+                                              field.handleChange(newDisks)
+                                            }}
+                                            className="h-8 text-sm flex-1"
+                                            placeholder="Disk Name"
+                                          />
+                                          <Input
+                                            value={disk.capacity}
+                                            type="number"
+                                            onChange={(e) => {
+                                              const newDisks = [...disks]
+                                              newDisks[index] = {
+                                                ...newDisks[index],
+                                                capacity: e.target.value,
+                                              }
+                                              field.handleChange(newDisks)
+                                            }}
+                                            className="h-8 text-sm flex-1"
+                                            placeholder="Capacity"
+                                          />
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() =>
+                                              field.handleChange(
+                                                disks.filter(
+                                                  (_: any, i: number) =>
+                                                    i !== index,
+                                                ),
+                                              )
+                                            }
+                                          >
+                                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                }}
+                              />
                             ) : (
-                              <Input
-                                name={field.name}
-                                value={(formData as any)[field.name]}
-                                onChange={handleInputChange}
-                                className="h-8 text-sm rounded-md border-input bg-background"
+                              <form.Field
+                                name={formFiled.name as any}
+                                children={(field) => (
+                                  <Input
+                                    value={String(field.state.value)}
+                                    onChange={(e) =>
+                                      field.handleChange(e.target.value as any)
+                                    }
+                                    className="h-8 text-sm rounded-md border-input bg-background"
+                                  />
+                                )}
                               />
                             )}
                           </>
                         ) : (
                           <div className="text-sm font-medium text-foreground flex flex-col gap-1">
-                            {field.name === 'cpus' &&
+                            {formFiled.name === 'cpus' &&
                             Array.isArray(rawValue) ? (
                               rawValue.map((cpu: any) => (
                                 <div key={cpu.id}>{cpu.name}</div>
                               ))
-                            ) : field.name === 'disks' &&
+                            ) : formFiled.name === 'disks' &&
                               Array.isArray(rawValue) ? (
                               rawValue.map((disk: any) => (
                                 <div
@@ -264,13 +427,13 @@ function MachineDetailsPage() {
                                 >
                                   <span>{disk.name}</span>
                                   <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-bold">
-                                    {disk.capacity}
+                                    {addTextToString(disk.capacity, 'GB')}
                                   </span>
                                 </div>
                               ))
-                            ) : field.name === 'tags' ? (
+                            ) : formFiled.name === 'tags' ? (
                               <TagList tags={rawValue as Array<TagItem>} />
-                            ) : field.name === 'added_on' ? (
+                            ) : formFiled.name === 'added_on' ? (
                               <span className="truncate">
                                 {convertTimestampToDate(rawValue as string) ||
                                   '—'}
@@ -295,64 +458,214 @@ function MachineDetailsPage() {
           {/* Localization section */}
           <SubpageCard
             title={'Localization'}
-            description={'Rack and environment placement'}
+            description={'Platfrom localization details'}
             type="Info"
             Icon={MapPin}
             content={
-              <>
-                <div className="flex flex-col">
-                  {[
-                    { label: 'Room name', value: machine.room_name },
-                    { label: 'Rack name', value: machine.rack_name },
-                    { label: 'Shelf number', value: machine.shelf_number },
-                  ].map((item, index, array) => (
-                    <div
-                      key={item.label}
-                      className={`flex flex-col gap-1.5 py-3 ${
-                        index !== array.length - 1
-                          ? 'border-b border-border/50'
-                          : ''
-                      }`}
-                    >
-                      <span className="text-[11px] font-bold uppercase tracking-tight text-muted-foreground/80">
-                        {item.label}
-                      </span>
-
-                      <span className="text-sm font-medium text-foreground">
-                        {item.value || '—'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            }
-          />
-          {/* Note */}
-          <SubpageCard
-            title={'Machine Notes'}
-            description={
-              'Useful information about machine added by team member'
-            }
-            type="Info"
-            Icon={Book}
-            content={
-              <>
+              <div className="flex flex-col gap-4">
                 {isEditing ? (
-                  <TextField
-                    value={formData.note ?? ''}
-                    onChange={handleInputChange}
-                    maxChars={500}
-                  />
+                  <div className="flex flex-col gap-4 py-2">
+                    {/* Team Selection */}
+                    <form.Field
+                      name="team_id"
+                      children={(field) => (
+                        <>
+                          <Select
+                            value={field.state.value?.toString() ?? ''}
+                            onValueChange={(value) => {
+                              field.handleChange(Number(value) as any)
+                              setSelectedTeam(Number(value))
+
+                              setSelectedRoom(undefined)
+                              setSelectedRack(undefined)
+                              form.setFieldValue('room_id', null)
+                              form.setFieldValue('rack_id', null)
+                              form.setFieldValue('shelf_id', null)
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a team" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {teams.map((team) => (
+                                <SelectItem
+                                  key={team.id}
+                                  value={team.id.toString()}
+                                >
+                                  {team.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                    />
+
+                    {/* Room / Lab Selection */}
+                    <form.Field
+                      name="room_id"
+                      children={(field) => (
+                        <>
+                          <Select
+                            disabled={selectedTeam == null}
+                            value={field.state.value?.toString() ?? ''}
+                            onValueChange={(value) => {
+                              field.handleChange(Number(value))
+                              setSelectedRoom(Number(value))
+                              setSelectedRack(undefined)
+                              form.setFieldValue('rack_id', null)
+                              form.setFieldValue('shelf_id', null)
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  selectedTeam == null
+                                    ? 'Select a Team first'
+                                    : availableRooms.length === 0
+                                      ? 'No rooms for this team'
+                                      : 'Select a lab'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableRooms.map((lab) => (
+                                <SelectItem
+                                  key={lab.id}
+                                  value={lab.id.toString()}
+                                >
+                                  {lab.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                    />
+
+                    {/* Rack Selection */}
+                    <form.Field
+                      name="rack_id"
+                      children={(field) => (
+                        <>
+                          <Select
+                            disabled={selectedRoom == null}
+                            value={field.state.value?.toString() ?? ''}
+                            onValueChange={(value) => {
+                              field.handleChange(Number(value))
+                              setSelectedRack(Number(value))
+                              form.setFieldValue('shelf_id', null)
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  selectedRoom == null
+                                    ? 'Select a Room first'
+                                    : availableRacks.length === 0
+                                      ? 'No racks available'
+                                      : 'Select a rack'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableRacks.map((rack) => (
+                                <SelectItem
+                                  key={rack.id}
+                                  value={rack.id.toString()}
+                                >
+                                  {rack.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                    />
+                    {/* Shelf Selection */}
+                    <form.Field
+                      name="shelf_id"
+                      children={(field) => (
+                        <>
+                          <Select
+                            disabled={selectedRack == null}
+                            value={field.state.value?.toString() ?? ''}
+                            onValueChange={(value) => {
+                              if (value === 'new') {
+                                handleShelfCreation(Number(selectedRack))
+                                return
+                              }
+                              field.handleChange(Number(value))
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  selectedRack == null
+                                    ? 'Select a Rack first'
+                                    : isLoadingShelves
+                                      ? 'Loading shelves...'
+                                      : 'Select a shelf'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {isLoadingShelves && field.state.value && (
+                                <SelectItem
+                                  value={field.state.value.toString()}
+                                >
+                                  Shelf #{machine.shelf_number}
+                                </SelectItem>
+                              )}
+                              {shelves
+                                ?.sort((a, b) => a.order - b.order)
+                                .map((shelf) => (
+                                  <SelectItem
+                                    key={shelf.id}
+                                    value={shelf.id.toString()}
+                                  >
+                                    Shelf #{shelf.order}
+                                  </SelectItem>
+                                ))}
+                              <SelectItem value="new">
+                                <div className="flex items-center gap-2">
+                                  <Plus className="h-3.5 w-3.5" />
+                                  <span>Add new shelf...</span>
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
+                    />
+                  </div>
                 ) : (
-                  <div className="text-sm leading-relaxed">
-                    {machine.note || (
-                      <span className="italic opacity-50">
-                        No notes available.
-                      </span>
-                    )}
+                  <div className="flex flex-col">
+                    {[
+                      { label: 'Team', value: machine.team_name },
+                      { label: 'Room name', value: machine.room_name },
+                      { label: 'Rack name', value: machine.rack_name },
+                      { label: 'Shelf number', value: machine.shelf_number },
+                    ].map((item, index, array) => (
+                      <div
+                        key={item.label}
+                        className={`flex flex-col gap-1.5 py-3 ${
+                          index !== array.length - 1
+                            ? 'border-b border-border/50'
+                            : ''
+                        }`}
+                      >
+                        <span className="text-[11px] font-bold uppercase tracking-tight text-muted-foreground/80">
+                          {item.label}
+                        </span>
+                        <span className="text-sm font-medium text-foreground">
+                          {item.value || '—'}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 )}
-              </>
+              </div>
             }
           />
           {/* Monitoring */}
