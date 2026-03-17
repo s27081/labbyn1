@@ -31,6 +31,7 @@ from app.routers import (
     database_rental_router,
     database_room_router,
     database_shelf_router,
+    database_search_router,
     database_tags_router,
     database_team_router,
     database_user_router,
