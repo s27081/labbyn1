@@ -35,7 +35,7 @@ async def test_rental_race_condition_async(test_client, db_session, service_head
     headers = service_header
 
     team_resp = await ac.post(
-        "/db/teams/",
+        "/db/teams",
         json={"name": unique_str("Race")},
         headers=headers,
     )
@@ -47,7 +47,7 @@ async def test_rental_race_condition_async(test_client, db_session, service_head
     cat_id = cat_resp.json()["id"]
 
     room_resp = await ac.post(
-        "/db/rooms/",
+        "/db/rooms",
         json={"name": unique_str("Room"), "room_type": "srv", "team_id": team_id},
         headers=headers,
     )
@@ -57,7 +57,7 @@ async def test_rental_race_condition_async(test_client, db_session, service_head
     for i in range(2):
         login = unique_str(f"r{i}")
         u_resp = await ac.post(
-            "/db/users/",
+            "/db/users",
             json={
                 "name": f"Racer{i}",
                 "surname": "Test",
@@ -92,7 +92,7 @@ async def test_rental_race_condition_async(test_client, db_session, service_head
     async def rent_item(token):
         """Helper to send rental request."""
         return await ac.post(
-            "/db/rentals/",
+            "/db/rentals",
             json={
                 "item_id": item_id,
                 "quantity": 1,

@@ -38,7 +38,7 @@ async def test_history_full_cycle_with_rollback(
     6. ROLLBACK CREATE -> Check if user doesn't exist
     """
     team_res = await test_client.post(
-        "/db/teams/", json={"name": unique_str("HistoryTeam")}, headers=service_header
+        "/db/teams", json={"name": unique_str("HistoryTeam")}, headers=service_header
     )
     team_ids = team_res.json()["id"]
 
@@ -53,7 +53,7 @@ async def test_history_full_cycle_with_rollback(
     }
 
     res = await test_client.post(
-        "/db/users/", json=user_payload, headers=service_header
+        "/db/users", json=user_payload, headers=service_header
     )
     assert res.status_code == 201
     user_id = res.json()["id"]
@@ -70,7 +70,7 @@ async def test_history_full_cycle_with_rollback(
         "team_ids": [team_ids],
     }
     admin_res = await test_client.post(
-        "/db/users/", json=admin_payload, headers=service_header
+        "/db/users", json=admin_payload, headers=service_header
     )
     assert admin_res.status_code == 201
     admin_id = admin_res.json()["id"]
@@ -88,7 +88,7 @@ async def test_history_full_cycle_with_rollback(
         "team_ids": [team_ids],
     }
     target_user_res = await test_client.post(
-        "/db/users/", json=target_user_payload, headers=service_header
+        "/db/users", json=target_user_payload, headers=service_header
     )
     assert target_user_res.status_code == 201
     user = target_user_res.json()

@@ -90,7 +90,7 @@ async def test_resource_chain_creation(test_client, service_header, db_session):
     headers = service_header
 
     team_res = await ac.post(
-        "/db/teams/",
+        "/db/teams",
         json={"name": unique_str("API_Team")},
         headers=headers,
     )
@@ -98,7 +98,7 @@ async def test_resource_chain_creation(test_client, service_header, db_session):
     team_id = team_res.json()["id"]
 
     room_res = await ac.post(
-        "/db/rooms/",
+        "/db/rooms",
         json={
             "name": unique_str("API_Room"),
             "room_type": "Server Room",
@@ -119,7 +119,7 @@ async def test_resource_chain_creation(test_client, service_header, db_session):
 
     user_login = unique_str("adm")
     user_res = await ac.post(
-        "/db/users/",
+        "/db/users",
         json={
             "name": "Admin",
             "surname": "Team",
@@ -144,7 +144,7 @@ async def test_resource_chain_creation(test_client, service_header, db_session):
     new_admin_header = {"Authorization": f"Bearer {new_admin_token}"}
 
     tag_res = await ac.post(
-        "/db/tags/", json={"name": unique_str("PROD"), "color": "red"}, headers=headers
+        "/db/tags", json={"name": unique_str("PROD"), "color": "red"}, headers=headers
     )
     tag_id = tag_res.json()["id"]
 
