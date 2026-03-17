@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+"""Dashboard dedidacted endpoints router."""
 
-from app.database import get_db
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import RequestContext
+from app.database import get_async_db
 from app.db.schemas import DashboardResponse
 from app.utils.dashboard_service import build_dashboard
-from app.auth.dependencies import RequestContext
 
 router = APIRouter()
 
@@ -14,5 +16,14 @@ router = APIRouter()
     response_model=DashboardResponse,
     tags=["Dashboard"],
 )
-def get_dashboard(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
-    return build_dashboard(db, ctx)
+async def get_dashboard(
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
+):
+    """Create dashboard view for user.
+
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: Dashboard view
+    """
+    return await build_dashboard(db, ctx)
