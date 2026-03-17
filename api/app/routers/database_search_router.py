@@ -34,16 +34,22 @@ async def get_search_data(
     items_stmt = ctx.team_filter(select(Inventory), Inventory)
     rooms_stmt = ctx.team_filter(select(Rooms), Rooms)
 
-    (users_res, teams_res, docs_res, machines_res, racks_res, items_res, rooms_res) = (
-        await asyncio.gather(
-            db.execute(users_stmt),
-            db.execute(teams_stmt),
-            db.execute(docs_stmt),
-            db.execute(machines_stmt),
-            db.execute(racks_stmt),
-            db.execute(items_stmt),
-            db.execute(rooms_stmt),
-        )
+    (
+        users_res,
+        teams_res,
+        docs_res,
+        machines_res,
+        racks_res,
+        items_res,
+        rooms_res,
+    ) = await asyncio.gather(
+        db.execute(users_stmt),
+        db.execute(teams_stmt),
+        db.execute(docs_stmt),
+        db.execute(machines_stmt),
+        db.execute(racks_stmt),
+        db.execute(items_stmt),
+        db.execute(rooms_stmt),
     )
 
     users = users_res.scalars().all()
