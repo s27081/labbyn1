@@ -31,7 +31,7 @@ async def test_client():
     :return: AsyncClient instance
     """
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True
     ) as client:
         yield client
 
@@ -147,19 +147,24 @@ async def alpha_admin_header(test_client, service_header):
 
 
 @pytest.fixture(scope="function")
-def rbac_data_suite(test_client, service_header_sync):
-    ac = test_client
-    h_service = service_header_sync
+async def rbac_data_suite(test_client, service_header):
+    """Generata dummy data suite for RBAC testing.
 
-    t_a = ac.post(
-        "/db/teams/", json={"name": f"Team_A_{uuid.uuid4().hex[:4]}"}, headers=h_service
-    ).json()["id"]
-    t_b = ac.post(
-        "/db/teams/", json={"name": f"Team_B_{uuid.uuid4().hex[:4]}"}, headers=h_service
-    ).json()["id"]
+    :param test_client: AsyncClient for the FastAPI app
+    :param service_header: Service authorization header for tests
+    :return: Populated db
+    """
+    ac = test_client
+    h_service = service_header
+
+    resp = await ac.post("/db/teams/", json={"name": f"Team_A_{uuid.uuid4().hex[:4]}"}, headers=h_service)
+    t_a = resp.json()["id"]
+
+    resp = await ac.post("/db/teams/", json={"name": f"Team_B_{uuid.uuid4().hex[:4]}"}, headers=h_service)
+    t_b = resp.json()["id"]
 
     u_a_login = f"user_a_{uuid.uuid4().hex[:4]}"
-    u_a_res = ac.post(
+    u_a_res = (await ac.post(
         "/db/users/",
         json={
             "login": u_a_login,
@@ -170,18 +175,16 @@ def rbac_data_suite(test_client, service_header_sync):
             "surname": "A",
         },
         headers=h_service,
-    ).json()
+    )).json()
 
     u_a_pwd = u_a_res["generated_password"]
     u_a_id = u_a_res["id"]
 
-    l_a = ac.post(
-        "/auth/login", data={"username": u_a_login, "password": u_a_pwd}
-    ).json()
+    l_a = (await ac.post("/auth/login", data={"username": u_a_login, "password": u_a_pwd})).json()
     h_a = {"Authorization": f"Bearer {l_a['access_token']}"}
 
     u_b_login = f"admin_b_{uuid.uuid4().hex[:4]}"
-    u_b_res = ac.post(
+    u_b_res = (await ac.post(
         "/db/users/",
         json={
             "login": u_b_login,
@@ -192,14 +195,12 @@ def rbac_data_suite(test_client, service_header_sync):
             "surname": "B",
         },
         headers=h_service,
-    ).json()
+    )).json()
 
     u_b_pwd = u_b_res["generated_password"]
     u_b_id = u_b_res["id"]
 
-    l_b = ac.post(
-        "/auth/login", data={"username": u_b_login, "password": u_b_pwd}
-    ).json()
+    l_b = (await ac.post("/auth/login", data={"username": u_b_login, "password": u_b_pwd})).json()
     h_b = {"Authorization": f"Bearer {l_b['access_token']}"}
 
     return {

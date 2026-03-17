@@ -1,6 +1,6 @@
 import pytest
 from fastapi.dependencies.utils import get_typed_signature
-
+from fastapi.routing import APIRoute, APIWebSocketRoute
 from tests.conftest import rbac_data_suite
 
 from app.auth.dependencies import RequestContext
@@ -12,9 +12,9 @@ pytestmark = [pytest.mark.security, pytest.mark.api]
 def test_security_scanner_all_endpoints_have_auth():
     """
     Test security scanner: Contract Validation.
+
     Automated check to ensure all API endpoints require authentication via RequestContext.
     """
-    from fastapi.routing import APIRoute, APIWebSocketRoute
 
     missing_auth = []
 
@@ -44,7 +44,7 @@ def test_security_scanner_all_endpoints_have_auth():
     ), f"Detected endpoints without RequestContext: {missing_auth}"
 
 
-def test_security_mass_assignment_user_promotion(test_client, rbac_data_suite):
+async def test_security_mass_assignment_user_promotion(test_client, rbac_data_suite):
     """
     Test Mass Assignment Protection.
     Checks if a standard user can self-elevate to 'admin' by injecting
@@ -53,7 +53,7 @@ def test_security_mass_assignment_user_promotion(test_client, rbac_data_suite):
     ac = test_client
     payload = {"name": "Hacker_User", "user_type": "admin", "is_superuser": True}
 
-    res = ac.patch(
+    res = await ac.patch(
         f"/db/users/{rbac_data_suite['user_a_id']}",
         json=payload,
         headers=rbac_data_suite["user_a_header"],
@@ -64,7 +64,7 @@ def test_security_mass_assignment_user_promotion(test_client, rbac_data_suite):
         assert data["user_type"] == "user"
 
 
-def test_security_input_injection_robustness(test_client, rbac_data_suite):
+async def test_security_input_injection_robustness(test_client, rbac_data_suite):
     """
     Test Input Validation & Injection.
     Tests the API's resilience against common injection patterns in query parameters.
@@ -73,14 +73,14 @@ def test_security_input_injection_robustness(test_client, rbac_data_suite):
     payloads = ["' OR '1'='1", "../etc/passwd", '{"$gt": ""}']
 
     for pattern in payloads:
-        res = ac.get(
+        res = await ac.get(
             f"/db/users/?name={pattern}", headers=rbac_data_suite["user_a_header"]
         )
 
         assert res.status_code < 500
 
 
-def test_security_history_bola_leak(test_client, service_header_sync, rbac_data_suite):
+async def test_security_history_bola_leak(test_client, service_header, rbac_data_suite):
     """
     Test BOLA (Broken Object Level Authorization) on Audit Logs.
     Ensures a user cannot access history logs (audit trails) belonging to other teams
@@ -88,22 +88,23 @@ def test_security_history_bola_leak(test_client, service_header_sync, rbac_data_
     """
     ac = test_client
 
-    ac.patch(
+    await ac.patch(
         f"/db/users/{rbac_data_suite['admin_b_id']}",
         json={"name": "Audit_B_Team"},
-        headers=service_header_sync,
+        headers=service_header,
     )
 
-    history = ac.get("/db/history/", headers=service_header_sync).json()
+    response = await ac.get("/db/history/", headers=service_header)
+    history = response.json()
     b_log_id = history[0]["id"]
 
-    res = ac.get(f"/db/history/{b_log_id}", headers=rbac_data_suite["user_a_header"])
+    res = await ac.get(f"/db/history/{b_log_id}", headers=rbac_data_suite["user_a_header"])
 
     assert res.status_code in [403, 404]
 
 
-def test_security_unauthorized_rollback_attempt(
-    test_client, rbac_data_suite, service_header_sync
+async def test_security_unauthorized_rollback_attempt(
+    test_client, rbac_data_suite, service_header
 ):
     """
     Test Broken Function Level Authorization (BFLA).
@@ -114,22 +115,23 @@ def test_security_unauthorized_rollback_attempt(
     u_id = rbac_data_suite["user_a_id"]
     u_header = rbac_data_suite["user_a_header"]
 
-    ac.patch(
+    await ac.patch(
         f"/db/users/{u_id}",
         json={"name": "Rollback_Test_Name"},
-        headers=service_header_sync,
+        headers=service_header,
     )
 
-    history = ac.get("/db/history/", headers=service_header_sync).json()
+    response = await ac.get("/db/history/", headers=service_header)
+    history = response.json()
     log_id = history[0]["id"]
 
-    res = ac.post(f"/db/history/{log_id}/rollback", headers=u_header)
+    res = await ac.post(f"/db/history/{log_id}/rollback", headers=u_header)
 
     assert res.status_code == 403
 
 
-def test_security_token_behavior_after_password_change(
-    test_client, rbac_data_suite, service_header_sync
+async def test_security_token_behavior_after_password_change(
+    test_client, rbac_data_suite, service_header
 ):
     """
     Test Token Persistence & Lifecycle.
@@ -140,15 +142,15 @@ def test_security_token_behavior_after_password_change(
     old_header = rbac_data_suite["user_a_header"]
     new_pw = "NewStrongPass2026!"
 
-    res = ac.patch(
-        f"/db/users/{u_id}", json={"password": new_pw}, headers=service_header_sync
+    res = await ac.patch(
+        f"/db/users/{u_id}", json={"password": new_pw}, headers=service_header
     )
     assert res.status_code == 200
 
-    res_old_token = ac.get("/db/rooms/", headers=old_header)
+    res_old_token = await ac.get("/db/rooms/", headers=old_header)
     assert res_old_token.status_code == 200
 
-    login_res = ac.post(
+    login_res = await ac.post(
         "/auth/login",
         data={"username": rbac_data_suite["user_a_login"], "password": new_pw},
     )

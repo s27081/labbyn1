@@ -102,6 +102,7 @@ async def websocket_endpoint(
     db: AsyncSession = Depends(get_async_db),
     user_manager=Depends(get_user_manager),
     strategy=Depends(get_database_strategy),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """WebSocket endpoint to push metrics data to front-end.
 
