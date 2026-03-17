@@ -207,7 +207,7 @@ async def delete_shelf(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Shelf is not empty. Please remove all machines from "
-                       "the shelf before deleting it.",
+                "the shelf before deleting it.",
             )
 
         await db.delete(db_shelf)

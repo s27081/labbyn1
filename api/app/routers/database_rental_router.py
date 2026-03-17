@@ -142,8 +142,10 @@ async def return_rental(
             message = "Returned successfully (Full)"
         else:
             rental.quantity -= qty_to_return
-            message = (f"Partially returned {qty_to_return} items. "
-                       f"Remaining: {rental.quantity}")
+            message = (
+                f"Partially returned {qty_to_return} items. "
+                f"Remaining: {rental.quantity}"
+            )
 
         if item:
             item.rental_status = False

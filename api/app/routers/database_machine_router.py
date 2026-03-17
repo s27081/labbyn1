@@ -260,7 +260,7 @@ async def update_machine(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You don't have permission to assign this machine "
-                           "to the specified team",
+                    "to the specified team",
                 )
         for k, v in update_data.items():
             setattr(machine, k, v)
@@ -362,7 +362,7 @@ async def mount_machine(
         return {
             "status": "success",
             "message": f"Machine {machine.name} mounted on shelf {shelf.name} "
-                       f"(Rack: {shelf.rack.name})",
+            f"(Rack: {shelf.rack.name})",
         }
 
 

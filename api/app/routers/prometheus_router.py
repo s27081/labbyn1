@@ -258,7 +258,7 @@ async def get_prometheus_all_metrics(
     instances: Optional[List[str]] = Query(
         None,
         description="List of instances or comma-separated string "
-                    "(e.g. host1:9100,host2:9100)",
+        "(e.g. host1:9100,host2:9100)",
     ),
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),

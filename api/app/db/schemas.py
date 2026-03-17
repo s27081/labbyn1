@@ -951,6 +951,7 @@ class InventoryResponse(InventoryBase):
 
 class InventoryDetailResponse(BaseModel):
     """Schema for reading Invetory details."""
+
     id: int
     name: str
     total_quantity: int
@@ -1016,6 +1017,7 @@ class HistoryResponse(HistoryBase):
 
 class DashboardItem(BaseModel):
     """Schema for dashboard item."""
+
     type: str
     id: str
     location: str
@@ -1024,12 +1026,14 @@ class DashboardItem(BaseModel):
 
 class DashboardSection(BaseModel):
     """Schema for dashboard section."""
+
     name: str
     items: List[DashboardItem]
 
 
 class DashboardResponse(BaseModel):
     """Schema for dashboard response."""
+
     sections: List[DashboardSection]
 
 
@@ -1100,6 +1104,7 @@ class DocumentationCreate(DocumentationBase):
 
 class DocumentationUpdate(BaseModel):
     """Schema for documentation update."""
+
     title: Optional[str] = Field(None, max_length=50)
     content: Optional[str] = Field(
         None, max_length=5000, description="Documentation content"
@@ -1110,6 +1115,7 @@ class DocumentationUpdate(BaseModel):
 
 class DocumentationResponse(DocumentationBase):
     """Schema for adding documentation."""
+
     id: int
     author: str
     added_on: datetime
@@ -1224,6 +1230,7 @@ class RackResponse(RackBase):
 
 class RackWithOrderedMachinesResponse(RackBase):
     """Schema for reading Machines within Rack."""
+
     id: int = Field(..., description="Unique identifier of the rack")
     team_name: Optional[str]
     tags: List[TagsResponse] = []

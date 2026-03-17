@@ -392,7 +392,7 @@ async def update_user_team_role(
             raise HTTPException(
                 status_code=403,
                 detail="You can only change roles for users in teams "
-                       "where you are a group admin.",
+                "where you are a group admin.",
             )
 
     stmt_target = select(UsersTeams).where(

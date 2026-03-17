@@ -134,7 +134,7 @@ async def detach_tag(
 
         return {
             "message": f"Tag {tag.name if tag else 'Unknown'} "
-                       f"detached from {data.entity_type}"
+            f"detached from {data.entity_type}"
         }
 
 
