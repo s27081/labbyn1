@@ -1,9 +1,9 @@
 """Smoke tests for Prometheus-related endpoints."""
 
 import pytest
-from app.main import app
-from app.db.models import User, UserType
 
+from app.db.models import User, UserType
+from app.main import app
 
 pytestmark = [pytest.mark.smoke, pytest.mark.prometheus, pytest.mark.asyncio]
 
@@ -33,10 +33,10 @@ async def test_prometheus_metrics_endpoint(test_client, service_header):
 
 @pytest.mark.xfail
 async def test_prometheus_websocket_endpoint(test_client, refresh_redis_client):
-    """
-    Smoke test for /ws/metrics WebSocket endpoint.
-    Test disabled due to async testing with WebSocketClient causing issues in CI/CD pipeline.
-    Please test manually if needed.
+    """Smoke test for /ws/metrics WebSocket endpoint.
+
+    Test disabled due to async testing with WebSocketClient
+    causing issues in CI/CD pipeline. Please test manually if needed.
     """
     with test_client.websocket_connect("/ws/metrics") as websocket:
         message = websocket.receive_json()

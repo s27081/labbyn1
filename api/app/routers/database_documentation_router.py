@@ -2,37 +2,37 @@
 
 from typing import List
 
-from app.database import get_async_db
-from app.db.models import Documentation, Tags
-from app.db.schemas import (
-    DocumentationCreate,
-    DocumentationUpdate,
-    DocumentationResponse,
-)
-from app.utils.redis_service import acquire_lock
-from app.auth.dependencies import RequestContext
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-router = APIRouter()
+from app.auth.dependencies import RequestContext
+from app.database import get_async_db
+from app.db.models import Documentation, Tags
+from app.db.schemas import (
+    DocumentationCreate,
+    DocumentationResponse,
+    DocumentationUpdate,
+)
+from app.utils.redis_service import acquire_lock
+
+router = APIRouter(prefix="/db", tags=["Documentation"])
 
 
 @router.get(
-    "/db/documentation/",
+    "/documentation",
     response_model=List[DocumentationResponse],
-    tags=["Documentation"],
 )
 async def get_documentation(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Get all documents from documentation
+    """Get all documents from documentation.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of all documents
+    :return: List of all documents.
     """
     ctx.require_user()
     stmt = select(Documentation).options(joinedload(Documentation.tags))
@@ -41,22 +41,21 @@ async def get_documentation(
 
 
 @router.post(
-    "/db/documentation/",
+    "/documentation",
     response_model=DocumentationResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Documentation"],
 )
 async def create_documentation(
     documentation_data: DocumentationCreate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create new document
+    """Create new document.
+
     :param data: Documentation data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: New document item
+    :return: New document item.
     """
     ctx.require_user()
     current_author = ctx.current_user.login
@@ -79,21 +78,20 @@ async def create_documentation(
 
 
 @router.get(
-    "/db/documentation/{documentation_id}",
+    "/documentation/{documentation_id}",
     response_model=DocumentationResponse,
-    tags=["Documentation"],
 )
 async def get_documentation_by_id(
     documentation_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Get specific document from documentation by ID
+    """Get specific document from documentation by ID.
+
     :param documentation_id: Document ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Document object
+    :return: Document object.
     """
     ctx.require_user()
     stmt = (
@@ -112,9 +110,8 @@ async def get_documentation_by_id(
 
 
 @router.patch(
-    "/db/documentation/{documentation_id}",
+    "/documentation/{documentation_id}",
     response_model=DocumentationResponse,
-    tags=["Documentation"],
 )
 async def update_documentation(
     documentation_id: int,
@@ -122,13 +119,13 @@ async def update_documentation(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update document data
+    """Update document data.
+
     :param documentation_id: Document ID
     :param documentation_data: Documentation data schema
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Updated Document
+    :return: Updated Document.
     """
     ctx.require_user()
     async with acquire_lock(f"documentation_lock:{documentation_id}"):
@@ -162,21 +159,20 @@ async def update_documentation(
 
 
 @router.delete(
-    "/db/documentation/{documentation_id}",
+    "/documentation/{documentation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Documentation"],
 )
 async def delete_document(
     documentation_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete document
+    """Delete document.
+
     :param documentation_id: Document ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: 204 No Content as success
     """
     ctx.require_user()
     async with acquire_lock(f"documentation_lock:{documentation_id}"):

@@ -8,47 +8,43 @@ import fastapi_users
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.routers import (
-    prometheus_router,
-    database_category_router,
-    database_inventory_router,
-    # database_layouts_router, # To be removed after new map implementation
-    database_rack_router,
-    database_shelf_router,
-    database_machine_router,
-    database_metadata_router,
-    database_rental_router,
-    database_room_router,
-    database_team_router,
-    database_user_router,
-    database_history_router,
-    database_documentation_router,
-    database_tags_router,
-    ansible_router,
-    dashboard_router,
-    authentication_router,
-    subpage_history_router,
-    database_cpus_router,
-    database_disks_router,
-)
-from app.routers.prometheus_router import metrics_worker, status_worker
-from app.utils.database_service import init_super_user, init_virtual_lab, init_document
 
 # pylint: disable=unused-import
-# import app.db.listeners
-
-from app.auth.auth_config import auth_backend
-from app.db.schemas import UserRead
-from app.db.schemas import UserUpdate
-from app.auth.auth_config import fastapi_users
-
+import app.db.listeners
+from app.auth.auth_config import auth_backend, fastapi_users
 from app.database import AsyncSessionLocal
+from app.db.schemas import UserRead, UserUpdate
+from app.routers import (
+    ansible_router,
+    authentication_router,
+    dashboard_router,
+    database_category_router,
+    database_cpus_router,
+    database_disks_router,
+    database_documentation_router,
+    database_history_router,
+    database_inventory_router,
+    database_machine_router,
+    database_metadata_router,
+    # database_layouts_router, # To be removed after new map implementation
+    database_rack_router,
+    database_rental_router,
+    database_room_router,
+    database_shelf_router,
+    database_tags_router,
+    database_team_router,
+    database_user_router,
+    prometheus_router,
+    subpage_history_router,
+)
+from app.routers.prometheus_router import metrics_worker, status_worker
+from app.utils.database_service import init_document, init_super_user, init_virtual_lab
 
 
 @asynccontextmanager
 async def lifespan(fast_api_app: FastAPI):  # pylint: disable=unused-argument
-    """
-    Application lifespan context manager.
+    """Application lifespan context manager.
+
     Starts background tasks for fetching Prometheus metrics.
     :param app: FastAPI application instance
     :return: None
@@ -110,7 +106,8 @@ app.include_router(
 app.include_router(prometheus_router.router)
 app.include_router(database_category_router.router)
 app.include_router(database_inventory_router.router)
-# app.include_router(database_layouts_router.router) # To be removed after new map implementation
+# TODO: be removed after new map implementation
+# app.include_router(database_layouts_router.router)
 app.include_router(database_machine_router.router)
 app.include_router(database_metadata_router.router)
 app.include_router(database_rental_router.router)

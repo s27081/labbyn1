@@ -6,10 +6,9 @@ from fastapi_users.authentication import AuthenticationBackend, BearerTransport
 from fastapi_users.authentication.strategy.db import DatabaseStrategy
 from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyAccessTokenDatabase
 
-from app.db.models import User
 from app.auth.manager import get_user_manager
-
 from app.database import get_access_token_db
+from app.db.models import User
 
 bearer_transport = BearerTransport(tokenUrl="auth/login")
 
@@ -17,8 +16,8 @@ bearer_transport = BearerTransport(tokenUrl="auth/login")
 def get_database_strategy(
     access_token_db: SQLAlchemyAccessTokenDatabase = Depends(get_access_token_db),
 ) -> DatabaseStrategy:
-    """
-    Create a database strategy for authentication.
+    """Create a database strategy for authentication.
+
     :param access_token_db: access token database dependency
     :return: DatabaseStrategy instance
     """

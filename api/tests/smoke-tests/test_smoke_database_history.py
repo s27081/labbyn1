@@ -1,22 +1,23 @@
+"""History tests to verify logging functionality."""
 import uuid
 
 import pytest
 from sqlalchemy import select
+
 from app.db import models, schemas
-from app.utils import database_service as service
 from app.routers.database_history_router import (
     _rollback_create,
     _rollback_delete,
     _rollback_update,
 )
-
+from app.utils import database_service as service
 
 pytestmark = [pytest.mark.smoke, pytest.mark.database, pytest.mark.asyncio]
 
 
 def unique_str(prefix: str):
-    """
-    Generate random name to avoid unique fields.
+    """Generate random name to avoid unique fields.
+
     :param prefix: Starting prefix
     :return: Prefix along with random name
     """
@@ -27,8 +28,8 @@ def unique_str(prefix: str):
 async def test_history_full_cycle_with_rollback(
     test_client, db_session, service_header
 ):
-    """
-    Test full history cycle with rollbacks:
+    """Test full history cycle with rollbacks.
+
     1. CREATE User -> Check log
     2. UPDATE User -> Check log
     3. DELETE User -> Check log
@@ -36,7 +37,6 @@ async def test_history_full_cycle_with_rollback(
     5. ROLLBACK UPDATE -> Check if user data is back to original state
     6. ROLLBACK CREATE -> Check if user doesn't exist
     """
-
     team_res = await test_client.post(
         "/db/teams/", json={"name": unique_str("HistoryTeam")}, headers=service_header
     )

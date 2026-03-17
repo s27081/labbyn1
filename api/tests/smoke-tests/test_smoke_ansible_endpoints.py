@@ -1,10 +1,13 @@
-import pytest
-import os
+"""Ansible tests verify ansible logic."""
 import json
+import os
+
+import pytest
 from sqlalchemy import select
-from app.utils.ansible_service import REPORTS_DIR
-from app.db.models import Machines, Rooms, Metadata
 from sqlalchemy.orm import joinedload
+
+from app.db.models import Machines, Metadata, Rooms
+from app.utils.ansible_service import REPORTS_DIR
 
 pytestmark = [
     pytest.mark.smoke,
@@ -17,8 +20,8 @@ pytestmark = [
 def helper_write_report(
     hostname: str, os_name: str = "Ubuntu 22.04", cpu_name: str = "Intel Test"
 ):
-    """
-    Creates a fake JSON report file on the disk to simulate Ansible output.
+    """Creates a fake JSON report file on the disk to simulate Ansible output.
+
     :param hostname: The IP or hostname of the machine.
     :param os_name: OS name to put in the report.
     :param cpu_name: CPU name to put in the report.
@@ -46,8 +49,8 @@ def helper_write_report(
 async def test_discovery_flow(
     test_client, db_session, service_header, mock_ansible_success
 ):
-    """
-    Verifies that the API creates machine records in the database based on mock reports
+    """Verifies that the API creates machine records in the database based on mock reports.
+
     and confirms their existence directly via DB session.
     """
     test_ip = "127.0.0.1"
@@ -80,8 +83,8 @@ async def test_discovery_flow(
 async def test_refresh_flow(
     test_client, db_session, service_header, mock_ansible_success
 ):
-    """
-    Tests the hardware refresh logic by:
+    """Tests the hardware refresh logic.
+
     1. Running discovery to create a machine and its metadata automatically.
     2. Manually sabotaging the machine data in the DB (changing OS).
     3. Running refresh to verify the data is restored from the Ansible report.

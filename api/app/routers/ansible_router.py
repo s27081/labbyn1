@@ -1,44 +1,38 @@
-"""
-Router for Ansible playbooks: creating Ansible user,
-gathering platform information and deploying Node Exporter.
+"""Router for Ansible playbooks.
+
+Creating Ansible user, gathering platform information and deploying Node Exporter.
 """
 
-import asyncio
 from datetime import datetime
-from typing import List, Optional, Union
-
-from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel
-from sqlalchemy import select, delete
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 from enum import Enum
+from typing import List, Optional
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import RequestContext
 from app.database import get_async_db
-from app.db.models import Machines, Metadata, Rooms, Disks, CPUs
+from app.db.models import CPUs, Disks, Machines, Metadata, Rooms
 from app.utils.ansible_service import parse_platform_report, run_playbook_task
 from app.utils.redis_service import acquire_lock
-from app.auth.dependencies import RequestContext
 
-router = APIRouter()
+router = APIRouter(tags=["Ansible"])
 
 REPORTS_DIR = "./platform_reports"
 PLAYBOOK_DIR = "/code/ansible"
 
 
 class HostRequest(BaseModel):
-    """
-    Pydantic model for a host input.
-    """
+    """Pydantic model for a host input."""
 
     host: str | list
     extra_vars: dict
 
 
 class AnsiblePlaybook(str, Enum):
-    """
-    Pydantic model for Ansible playbook execution request.
-    """
+    """Pydantic model for Ansible playbook execution request."""
 
     create_user = "create_user"
     scan_platform = "scan_platform"
@@ -67,9 +61,11 @@ PLAYBOOK_MAP = {
 async def verify_machine_ownership(
     machine_id: int, db: AsyncSession, ctx: RequestContext
 ):
-    """
-    Check if the machine belongs to the user's team.
-    Supports both Sync and Async sessions.
+    """Check if the machine belongs to the user's team.
+
+    :param machine_id: Machine ID
+    :param db: Async database session
+    :param ctx: Request context for user and team info
     """
     stmt = select(Machines).where(Machines.id == machine_id)
     stmt = ctx.team_filter(stmt, Machines)
@@ -89,10 +85,11 @@ async def verify_machine_ownership(
 async def create_ansible_user(
     request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)
 ):
-    """
-    Create Ansible user on a host.
+    """Create Ansible user on a host.
+
     :param request: HostRequest containing the host IP or hostname
-    :return: Success or error message
+    :param ctx: Request context for user and team info
+    :return: Success or error message.
     """
     ctx.require_user()
     return await run_playbook_task(
@@ -104,10 +101,11 @@ async def create_ansible_user(
 async def scan_platform(
     request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)
 ):
-    """
-    Gather information about platform.
-    :param reqest: HostRequest containing the host IP or hostname
-    :return: Success or error message
+    """Gather information about platform.
+
+    :param request: HostRequest containing the host IP or hostname
+    :param ctx: Request context for user and team info
+    :return: Success or error message.
     """
     ctx.require_user()
     return await run_playbook_task(
@@ -119,10 +117,11 @@ async def scan_platform(
 async def deploy_agent(
     request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)
 ):
-    """
-    Deploy Node Exporter on a host.
+    """Deploy Node Exporter on a host.
+
     :param request: HostRequest containing the host IP or hostname
-    :return: Success or error message
+    :param ctx: Request context for user and team info
+    :return: Success or error message.
     """
     ctx.require_user()
     return await run_playbook_task(
@@ -134,10 +133,11 @@ async def deploy_agent(
 async def setup_agent(
     request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)
 ):
-    """
-    Workflow endpoint: first create Ansible user (if needed), then deploy Node Exporter.
+    """Create Ansible user (if needed), then deploy Node Exporter.
+
     :param request: HostRequest containing the host IP or hostname
-    :return: Combined results of both steps
+    :param ctx: Request context for user and team info
+    :return: Combined results of both steps.
     """
     ctx.require_user()
 
@@ -155,7 +155,7 @@ async def setup_agent(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Unexpected error during setup_agent workflow: {e}"
-        )
+        ) from e
 
     return {
         "user_creation": user_result,
@@ -169,6 +169,13 @@ async def discover_hosts(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
+    """Discover hosts not connected to database.
+
+    :param request: DiscoveryRequest containing the host IP or hostname
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: Success or error message.
+    """
     ctx.require_user()
     if not request.hosts:
         raise HTTPException(status_code=400, detail="Host list cannot be empty.")
@@ -285,6 +292,14 @@ async def refresh_machine_hardware(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
+    """Refresh information about machine hardware.
+
+    :param request: DiscoveryRequest containing the host IP or hostname
+    :param machine_id: Machine ID
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: Success or error message.
+    """
     machine = await verify_machine_ownership(machine_id, db, ctx)
     await run_playbook_task(
         PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], [machine.name], request.extra_vars
@@ -322,7 +337,7 @@ async def refresh_machine_hardware(
         return {"message": "Updated successfully", "data": specs}
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/ansible/machine/{machine_id}/cleanup")
@@ -332,6 +347,14 @@ async def cleanup_machine(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
+    """Delete Ansible/Node exporters from machine.
+
+    :param machine_id: Machine ID
+    :param request: DiscoveryRequest containing the host IP or hostname
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: Success or error message.
+    """
     async with acquire_lock(f"machine_lock:{machine_id}"):
         machine = await verify_machine_ownership(machine_id, db, ctx)
         try:
@@ -364,7 +387,7 @@ async def cleanup_machine(
             }
         except Exception as e:
             await db.rollback()
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/ansible/machine/{machine_id}/remove_agent")
@@ -374,6 +397,14 @@ async def remove_agent(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
+    """Delete Node exporter from machine.
+
+    :param machine_id: Machine ID
+    :param request: DiscoveryRequest containing the host IP or hostname
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: Success or error message.
+    """
     async with acquire_lock(f"machine_lock:{machine_id}"):
         machine = await verify_machine_ownership(machine_id, db, ctx)
         try:
@@ -394,4 +425,4 @@ async def remove_agent(
             return {"message": "Agent removed", "agent_result": agent_res}
         except Exception as e:
             await db.rollback()
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e

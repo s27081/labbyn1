@@ -1,8 +1,11 @@
+"""Router for authentication non-default methods."""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import get_async_db
+
 from app.auth.auth_config import fastapi_users
+from app.database import get_async_db
 from app.db.models import User
 from app.db.schemas import FirstChangePasswordRequest
 from app.utils.security import hash_password
@@ -18,7 +21,16 @@ async def setup_first_password(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
+    """Setup first password.
 
+    After creating user with automatically assigned password, the user needs
+    to change it at his first login.
+
+    :param data: Password change request data
+    :param user: Active user in database session
+    :param db: Active database session
+    :return: Success or error message
+    """
     if not user.force_password_change:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

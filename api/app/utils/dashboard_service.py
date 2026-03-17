@@ -1,14 +1,19 @@
-"""
-User dashboard items parser. Prepares json file with database data for user-dashboard page.
-"""
+"""User dashboard items parser. Prepares json file with database data for user-dashboard page."""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import Machines, Rooms, Inventory, Teams, History
+
 from app.auth.dependencies import RequestContext
+from app.db.models import History, Inventory, Machines, Rooms, Teams
 
 
 async def build_dashboard(db: AsyncSession, ctx: RequestContext):
+    """Build user dashboard.
+
+    :param db: Active database session
+    :param ctx: User request context containing user and team information
+    :return: User dashboard items
+    """
     ctx.require_user()
 
     machines_stmt = ctx.team_filter(select(Machines), Machines)

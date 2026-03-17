@@ -1,39 +1,37 @@
 """Router for Rental Database API CRUD."""
 
-from typing import List, Optional
 from datetime import date
-from app.database import get_async_db
-from app.db.models import (
-    Rentals,
-    Inventory,
-)
-from app.db.schemas import RentalsCreate, RentalsResponse, RentalReturn
-from app.utils.redis_service import acquire_lock
-from app.auth.dependencies import RequestContext
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter()
+from app.auth.dependencies import RequestContext
+from app.database import get_async_db
+from app.db.models import Inventory, Rentals
+from app.db.schemas import RentalReturn, RentalsCreate, RentalsResponse
+from app.utils.redis_service import acquire_lock
+
+router = APIRouter(prefix="/db", tags=["Inventory-Rentals"])
 
 
 @router.post(
-    "/db/rentals/",
+    "/rentals",
     response_model=RentalsResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Rentals"],
 )
 async def create_rental(
     rent_data: RentalsCreate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create new item rent
+    """Create new item rent.
+
     :param rent_data: Rent data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: New Rental object
+    :return: New Rental object.
     """
     ctx.require_user()
 
@@ -84,23 +82,22 @@ async def create_rental(
         return rental
 
 
-@router.post("/db/rentals/{rental_id}/return", tags=["Rentals"])
+@router.post("/rentals/{rental_id}/return")
 async def return_rental(
     rental_id: int,
     return_data: Optional[RentalReturn] = None,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    End item rental
+    """End item rental.
+
     :param rental_id: Rental ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Success message
+    :return: Success message.
     """
     ctx.require_user()
 
-    # Wstępne sprawdzenie uprawnień
     check_stmt = (
         select(Rentals)
         .join(Inventory, Rentals.item_id == Inventory.id)
@@ -145,7 +142,8 @@ async def return_rental(
             message = "Returned successfully (Full)"
         else:
             rental.quantity -= qty_to_return
-            message = f"Partially returned {qty_to_return} items. Remaining: {rental.quantity}"
+            message = (f"Partially returned {qty_to_return} items. "
+                       f"Remaining: {rental.quantity}")
 
         if item:
             item.rental_status = False
@@ -155,16 +153,16 @@ async def return_rental(
     return {"message": message}
 
 
-@router.get("/db/rentals/", response_model=List[RentalsResponse], tags=["Rentals"])
+@router.get("/rentals", response_model=List[RentalsResponse])
 async def get_rentals(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Get all rentals
+    """Get all rentals.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of all rentals
+    :return: List of all rentals.
     """
     ctx.require_user()
     stmt = select(Rentals).join(Inventory, Rentals.item_id == Inventory.id)
@@ -173,18 +171,18 @@ async def get_rentals(
     return result.scalars().all()
 
 
-@router.get("/db/rentals/{rental_id}", response_model=RentalsResponse, tags=["Rentals"])
+@router.get("/rentals/{rental_id}", response_model=RentalsResponse)
 async def get_rental_by_id(
     rental_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Get specific rental by ID
+    """Get specific rental by ID.
+
     :param rental_id: Rental ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Rental object
+    :return: Rental object.
     """
     ctx.require_user()
     stmt = (
@@ -204,20 +202,18 @@ async def get_rental_by_id(
     return rental
 
 
-@router.delete(
-    "/db/rentals/{rental_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Rentals"]
-)
+@router.delete("/rentals/{rental_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_rental(
     rental_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete rental history
+    """Delete rental history.
+
     :param rental_id: Rental ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: Success or error message.
     """
     ctx.require_user()
     stmt = (

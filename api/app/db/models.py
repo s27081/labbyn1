@@ -2,6 +2,9 @@
 
 from datetime import datetime
 from enum import Enum as PyEnum
+
+from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTable
+from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyBaseAccessTokenTable
 from sqlalchemy import (
     Boolean,
     Column,
@@ -11,13 +14,11 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
-    func,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
-from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTable
-from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyBaseAccessTokenTable
 
 Base = declarative_base()
 
@@ -53,9 +54,7 @@ class ActionType(PyEnum):
 
 
 class Layout(Base):
-    """
-    Layout model representing the layout coordinates.
-    """
+    """Layout model representing the layout coordinates."""
 
     __tablename__ = "layout"
 
@@ -72,9 +71,7 @@ class Layout(Base):
 
 
 class Layouts(Base):
-    """
-    Layouts model representing the association between rooms and layouts.
-    """
+    """Layouts model representing the association between rooms and layouts."""
 
     __tablename__ = "layouts"
 
@@ -88,9 +85,7 @@ class Layouts(Base):
 
 
 class Rack(Base):
-    """
-    Rack model representing racks in the system.
-    """
+    """Rack model representing racks in the system."""
 
     __tablename__ = "racks"
 
@@ -111,9 +106,7 @@ class Rack(Base):
 
 
 class Shelf(Base):
-    """
-    Shelf model representing shelves in the system.
-    """
+    """Shelf model representing shelves in the system."""
 
     __tablename__ = "shelves"
 
@@ -130,9 +123,7 @@ class Shelf(Base):
 
 
 class Rooms(Base):
-    """
-    Rooms model representing rooms in the system.
-    """
+    """Rooms model representing rooms in the system."""
 
     __tablename__ = "rooms"
 
@@ -155,9 +146,7 @@ class Rooms(Base):
 
 
 class CPUs(Base):
-    """
-    CPUs model representing CPUs models attached to machine.
-    """
+    """CPUs model representing CPUs models attached to machine."""
 
     __tablename__ = "cpus"
 
@@ -169,9 +158,7 @@ class CPUs(Base):
 
 
 class Disks(Base):
-    """
-    Disks model representing disks attached to machine.
-    """
+    """Disks model representing disks attached to machine."""
 
     __tablename__ = "disks"
 
@@ -184,9 +171,7 @@ class Disks(Base):
 
 
 class Machines(Base):
-    """
-    Machines model representing machines in the system.
-    """
+    """Machines model representing machines in the system."""
 
     __tablename__ = "machines"
 
@@ -225,9 +210,7 @@ class Machines(Base):
 
 
 class Metadata(Base):
-    """
-    Metadata model representing additional metadata for machines.
-    """
+    """Metadata model representing additional metadata for machines."""
 
     __tablename__ = "metadata"
 
@@ -245,9 +228,7 @@ class Metadata(Base):
 
 
 class Teams(Base):
-    """
-    Teams model representing teams in the system.
-    """
+    """Teams model representing teams in the system."""
 
     __tablename__ = "teams"
 
@@ -266,9 +247,7 @@ class Teams(Base):
 
 
 class User(SQLAlchemyBaseUserTable[int], Base):
-    """
-    User model representing users in the system.
-    """
+    """User model representing users in the system."""
 
     __tablename__ = "user"
 
@@ -305,18 +284,14 @@ class User(SQLAlchemyBaseUserTable[int], Base):
 
 
 class AccessToken(SQLAlchemyBaseAccessTokenTable[int], Base):
-    """
-    AccessToken model for FastAPI Users access tokens.
-    """
+    """AccessToken model for FastAPI Users access tokens."""
 
     __tablename__ = "access_tokens"
     user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
 
 
 class Rentals(Base):
-    """
-    Rentals model representing machine rentals by users.
-    """
+    """Rentals model representing machine rentals by users."""
 
     __tablename__ = "rentals"
 
@@ -344,9 +319,7 @@ class Rentals(Base):
 
 
 class Inventory(Base):
-    """
-    Inventory model representing inventory items in the system.
-    """
+    """Inventory model representing inventory items in the system."""
 
     __tablename__ = "inventory"
 
@@ -377,9 +350,7 @@ class Inventory(Base):
 
 
 class Categories(Base):
-    """
-    Categories model representing inventory categories.
-    """
+    """Categories model representing inventory categories."""
 
     __tablename__ = "categories"
 
@@ -394,9 +365,7 @@ class Categories(Base):
 
 
 class History(Base):
-    """
-    History model representing actions performed in the system.
-    """
+    """History model representing actions performed in the system."""
 
     __tablename__ = "history"
 
@@ -425,9 +394,7 @@ class History(Base):
 
 
 class Tags(Base):
-    """
-    Tags model representing tags in the system.
-    """
+    """Tags model representing tags in the system."""
 
     __tablename__ = "tags"
 
@@ -450,9 +417,7 @@ class Tags(Base):
 
 
 class Documentation(Base):
-    """
-    Documentation model representing documentation in the system.
-    """
+    """Documentation model representing documentation in the system."""
 
     __tablename__ = "documentation"
 
@@ -472,9 +437,7 @@ class Documentation(Base):
 
 
 class TagsRooms(Base):
-    """
-    TagsRacks model representing association between rooms and tags.
-    """
+    """TagsRacks model representing association between rooms and tags."""
 
     __tablename__ = "tags_rooms"
 
@@ -484,9 +447,7 @@ class TagsRooms(Base):
 
 
 class TagsDocumentation(Base):
-    """
-    TagsDocumentation model representing association between documentation and tags.
-    """
+    """TagsDocumentation model representing association between documentation and tags."""
 
     __tablename__ = "tags_documentation"
 
@@ -496,9 +457,7 @@ class TagsDocumentation(Base):
 
 
 class TagsRacks(Base):
-    """
-    TagsRacks model representing association between racks and tags.
-    """
+    """TagsRacks model representing association between racks and tags."""
 
     __tablename__ = "tags_racks"
 
@@ -508,9 +467,7 @@ class TagsRacks(Base):
 
 
 class TagsMachines(Base):
-    """
-    TagsMachines model representing association between machines and tags.
-    """
+    """TagsMachines model representing association between machines and tags."""
 
     __tablename__ = "tags_machines"
     id = Column(Integer, primary_key=True)
@@ -519,9 +476,7 @@ class TagsMachines(Base):
 
 
 class UsersTeams(Base):
-    """
-    UsersTeams model representing association between users and teams for many-to-many relationship.
-    """
+    """UsersTeams model representing association between users and teams for many-to-many relationship."""
 
     __tablename__ = "users_teams"
     id = Column(Integer, primary_key=True)

@@ -1,31 +1,32 @@
 """Router for Team Database API CRUD."""
 
 from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.auth.dependencies import RequestContext
 from app.database import get_async_db
-from app.db.models import Teams, Inventory, Rack, Shelf, UsersTeams, Rooms, Machines
+from app.db.models import Inventory, Machines, Rack, Rooms, Shelf, Teams, UsersTeams
 from app.db.schemas import (
+    TeamDetailResponse,
+    TeamFullDetailResponse,
     TeamsCreate,
     TeamsResponse,
     TeamsUpdate,
-    TeamDetailResponse,
-    TeamFullDetailResponse,
 )
 from app.utils.redis_service import acquire_lock
-from app.auth.dependencies import RequestContext
 
-router = APIRouter()
+router = APIRouter(prefix="/db", tags=["Teams"])
 
 
 def format_team_output(team: Teams):
-    """
-    Format team output to include admin names and member details
+    """Format team output to include admin names and member details.
+
     :param team: Team object to format
-    :return: Formatted team dictionary with admin names and member details
+    :return: Formatted team dictionary with admin names and member details.
     """
     group_admins = [m.user for m in team.users if m.is_group_admin]
     admins_info = [
@@ -62,10 +63,12 @@ def format_team_output(team: Teams):
 
 
 def format_team_full_detail(team: Teams):
-    """
-    Format team output to include detailed information about admins, members, racks, machines, and inventory.
+    """Format team output to include detailed information.
+
+    Includes entries about admins, members, racks, machines, and inventory.
+
     :param team: team object to format
-    :return: formatted team dictionary with detailed information about admins, members, racks, machines, and inventory
+    :return: formatted team dictionary with detailed information
     """
     group_admins = [m.user for m in team.users if m.is_group_admin]
 
@@ -172,21 +175,20 @@ def format_team_full_detail(team: Teams):
 
 
 @router.post(
-    "/db/teams/",
+    "/teams",
     response_model=TeamsResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Teams"],
 )
 async def create_team(
     team_data: TeamsCreate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create new team
+    """Create new team.
+
     :param team_data: Team data
     :param db: Active database session
-    :return: Team object
+    :return: Team object.
     """
     ctx.require_admin()
     obj = Teams(**team_data.model_dump())
@@ -201,15 +203,15 @@ async def create_team(
     return obj
 
 
-@router.get("/db/teams/", response_model=List[TeamsResponse], tags=["Teams"])
+@router.get("/teams", response_model=List[TeamsResponse])
 async def get_teams(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all teams
+    """Fetch all teams.
+
     :param db: Active database session
-    :return: List of all teams
+    :return: List of all teams.
     """
     ctx.require_user()
     stmt = select(Teams)
@@ -217,18 +219,18 @@ async def get_teams(
     return result.scalars().all()
 
 
-@router.get(
-    "/db/teams/teams_info", response_model=List[TeamDetailResponse], tags=["Teams"]
-)
+@router.get("/teams/teams_info", response_model=List[TeamDetailResponse])
 async def get_team_info(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch detailed information about the current user's team, including admin names and member details.
+    """Fetch detailed information about the current user's team.
+
+    Including admin names and member details.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Detailed team information with admin names and member details
+    :return: Detailed team information with admin names and member details.
     """
     ctx.require_user()
     stmt = select(Teams).options(joinedload(Teams.users).joinedload(UsersTeams.user))
@@ -239,21 +241,22 @@ async def get_team_info(
 
 
 @router.get(
-    "/db/teams/team_info/{team_id}",
+    "/teams/team_info/{team_id}",
     response_model=TeamFullDetailResponse,
-    tags=["Teams"],
 )
 async def get_team_info_by_id(
     team_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch detailed information about a specific team by ID, including user, machines, and inventory details.
+    """Fetch detailed information about a specific team by ID.
+
+    Including in team: users, machines, and inventory details.
+
     :param team_id: Team ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Detailed team information with admin names and member details
+    :return: Detailed team information with admin names and member details.
     """
     ctx.require_user()
 
@@ -283,27 +286,26 @@ async def get_team_info_by_id(
     return format_team_full_detail(team)
 
 
-@router.patch("/db/teams/{team_id}", response_model=TeamsResponse, tags=["Teams"])
+@router.patch("teams/{team_id}", response_model=TeamsResponse)
 async def update_team(
     team_id: int,
     team_data: TeamsUpdate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update Team
+    """Update Team.
+
     :param team_id: Team ID
     :param team_data: Team data schema
     :param db: Active database session
-    :return: Updated Team
+    :return: Updated Team.
     """
-
     if not ctx.is_admin:
         ctx.require_group_admin()
         stmt_check = select(UsersTeams).filter(
             UsersTeams.user_id == ctx.current_user.id,
             UsersTeams.team_id == team_id,
-            UsersTeams.is_group_admin == True,
+            UsersTeams.is_group_admin,
         )
         res_check = await db.execute(stmt_check)
         if not res_check.scalar_one_or_none():
@@ -327,19 +329,17 @@ async def update_team(
         return team
 
 
-@router.delete(
-    "/db/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Teams"]
-)
+@router.delete("/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_team(
     team_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete Team
+    """Delete Team.
+
     :param team_id: Team ID
     :param db: Active database session
-    :return: None
+    :return: None.
     """
     ctx.require_admin()
     async with acquire_lock(f"team_lock:{team_id}"):

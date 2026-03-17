@@ -3,42 +3,42 @@
 import json
 from typing import List
 
-from app.database import get_async_db
-from app.db.models import Machines, User, UserType, Rack, Shelf, CPUs, Disks, Metadata
-from app.db.schemas import (
-    MachinesCreate,
-    MachinesResponse,
-    MachinesUpdate,
-    MachineFullDetailResponse,
-)
-from app.utils.redis_service import acquire_lock, get_cache
-from app.auth.dependencies import RequestContext
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from app.utils.database_service import resolve_target_team_id
 
-router = APIRouter()
+from app.auth.dependencies import RequestContext
+from app.database import get_async_db
+from app.db.models import CPUs, Disks, Machines, Metadata, Shelf
+from app.db.schemas import (
+    MachineFullDetailResponse,
+    MachinesCreate,
+    MachinesResponse,
+    MachinesUpdate,
+)
+from app.utils.database_service import resolve_target_team_id
+from app.utils.redis_service import acquire_lock, get_cache
+
+router = APIRouter(prefix="/db", tags=["Machines"])
 
 
 @router.post(
-    "/db/machines/",
+    "/machines/",
     response_model=MachinesResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Machines"],
 )
 async def create_machine(
     machine_data: MachinesCreate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create and add new machine to database
+    """Create and add new machine to database.
+
     :param machine_data: Machine data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Machine object
+    :return: Machine object.
     """
     ctx.require_user()
     cpus = machine_data.cpus or []
@@ -65,16 +65,16 @@ async def create_machine(
     return obj
 
 
-@router.get("/db/machines/", response_model=List[MachinesResponse], tags=["Machines"])
+@router.get("/machines/", response_model=List[MachinesResponse])
 async def get_machines(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all machines
+    """Fetch all machines.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of machines
+    :return: List of machines.
     """
     ctx.require_user()
     stmt = select(Machines)
@@ -83,20 +83,18 @@ async def get_machines(
     return result.scalars().all()
 
 
-@router.get(
-    "/db/machines/{machine_id}", response_model=MachinesResponse, tags=["Machines"]
-)
+@router.get("/machines/{machine_id}", response_model=MachinesResponse)
 async def get_machine_by_id(
     machine_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific machine by ID
+    """Fetch specific machine by ID.
+
     :param machine_id: Machine ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Machine object
+    :return: Machine object.
     """
     ctx.require_user()
     stmt = select(Machines).filter(Machines.id == machine_id)
@@ -113,23 +111,21 @@ async def get_machine_by_id(
 
 
 @router.get(
-    "/db/machines/{machine_id}/full",
+    "/machines/{machine_id}/full",
     response_model=MachineFullDetailResponse,
-    tags=["Machines"],
 )
 async def get_machine_full_detail(
     machine_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific machine by ID
+    """Fetch specific machine by ID.
+
     :param machine_id: Machine ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Machine object
+    :return: Machine object.
     """
-
     ctx.require_user()
     stmt = select(Machines).filter(Machines.id == machine_id)
     stmt = ctx.team_filter(stmt, Machines)
@@ -230,22 +226,20 @@ async def get_machine_full_detail(
     }
 
 
-@router.patch(
-    "/db/machines/{machine_id}", response_model=MachinesResponse, tags=["Machines"]
-)
+@router.patch("/machines/{machine_id}", response_model=MachinesResponse)
 async def update_machine(
     machine_id: int,
     machine_data: MachinesUpdate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update machine data
+    """Update machine data.
+
     :param machine_id: Machine ID
     :param machine_data: Machine data schema
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Updated Machine
+    :return: Updated Machine.
     """
     ctx.require_user()
     async with acquire_lock(f"machine_lock:{machine_id}"):
@@ -265,7 +259,8 @@ async def update_machine(
             if update_data["team_id"] not in ctx.team_ids:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have permission to assign this machine to the specified team",
+                    detail="You don't have permission to assign this machine "
+                           "to the specified team",
                 )
         for k, v in update_data.items():
             setattr(machine, k, v)
@@ -286,21 +281,20 @@ async def update_machine(
 
 
 @router.delete(
-    "/db/machines/{machine_id}",
+    "/machines/{machine_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Machines"],
 )
 async def delete_machine(
     machine_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete Machine
+    """Delete Machine.
+
     :param machine_id: Machine ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: None.
     """
     ctx.require_user()
     async with acquire_lock(f"machine_lock:{machine_id}"):
@@ -318,22 +312,20 @@ async def delete_machine(
         await db.commit()
 
 
-@router.post(
-    "/db/machines/{machine_id}/mount/{shelf_id}", status_code=status.HTTP_200_OK
-)
+@router.post("/machines/{machine_id}/mount/{shelf_id}", status_code=status.HTTP_200_OK)
 async def mount_machine(
     machine_id: int,
     shelf_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Mounts a machine onto a specific shelf
+    """Mounts a machine onto a specific shelf.
+
     :param machine_id: ID of the machine to mount
     :param shelf_id: ID of the target shelf
     :param db: Active database session
     :param ctx: Request context for authorization
-    :return: Status message
+    :return: Status message.
     """
     ctx.require_user()
     async with acquire_lock(f"machine_lock:{machine_id}"):
@@ -369,22 +361,23 @@ async def mount_machine(
         await db.commit()
         return {
             "status": "success",
-            "message": f"Machine {machine.name} mounted on shelf {shelf.name} (Rack: {shelf.rack.name})",
+            "message": f"Machine {machine.name} mounted on shelf {shelf.name} "
+                       f"(Rack: {shelf.rack.name})",
         }
 
 
-@router.post("/db/machines/{machine_id}/unmount", status_code=status.HTTP_200_OK)
+@router.post("/machines/{machine_id}/unmount", status_code=status.HTTP_200_OK)
 async def unmount_machine(
     machine_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Removes a machine from its current shelf (sets shelf_id to NULL)
+    """Removes a machine from its current shelf (sets shelf_id to NULL).
+
     :param machine_id: ID of the machine to unmount
     :param db: Active database session
     :param ctx: Request context for team-based access control
-    :return: Status message
+    :return: Status message.
     """
     ctx.require_user()
 

@@ -1,43 +1,44 @@
 """Router for Room Database API CRUD."""
 
 from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
+
+from app.auth.dependencies import RequestContext
 from app.database import get_async_db
-from app.db.models import Rooms, Tags, Rack, Shelf
+from app.db.models import Rack, Rooms, Shelf, Tags
 from app.db.schemas import (
+    RoomDashboardResponse,
+    RoomDetailsResponse,
     RoomsCreate,
     RoomsResponse,
     RoomsUpdate,
-    RoomDashboardResponse,
-    RoomDetailsResponse,
 )
-from app.utils.redis_service import acquire_lock
-from fastapi import APIRouter, Depends, HTTPException, status
-from app.auth.dependencies import RequestContext
 from app.utils.database_service import resolve_target_team_id
+from app.utils.redis_service import acquire_lock
 
-
-router = APIRouter()
+router = APIRouter(prefix="/db", tags=["Rooms"])
 
 
 @router.post(
-    "/db/rooms/",
+    "/rooms",
     response_model=RoomsResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Rooms"],
 )
 async def create_room(
     room_data: RoomsCreate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create new room
+    """Create new room.
+
     :param room_data: Room data
     :param db: Active database session
-    :return: Room object
+    :param ctx: Request context for user and team info
+    :return: Room object.
     """
     ctx.require_group_admin()
     tag_ids = room_data.tag_ids if hasattr(room_data, "tag_ids") else []
@@ -59,15 +60,16 @@ async def create_room(
     return obj
 
 
-@router.get("/db/rooms/", response_model=List[RoomsResponse], tags=["Rooms"])
+@router.get("/rooms/", response_model=List[RoomsResponse])
 async def get_rooms(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all rooms
+    """Fetch all rooms.
+
+    :param ctx: Request context for user and team info
     :param db: Active database session
-    :return: List of all rooms
+    :return: List of all rooms.
     """
     ctx.require_user()
     stmt = select(Rooms).options(joinedload(Rooms.tags))
@@ -77,18 +79,16 @@ async def get_rooms(
     return result.unique().scalars().all()
 
 
-@router.get(
-    "/db/rooms/dashboard", response_model=List[RoomDashboardResponse], tags=["Rooms"]
-)
+@router.get("/rooms/dashboard", response_model=List[RoomDashboardResponse])
 async def get_rooms_dashboard(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all rooms with rack count and map link for dashboard
+    """Fetch all rooms with rack count and map link for dashboard.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Room object
+    :return: Room object.
     """
     ctx.require_user()
     stmt = select(Rooms).options(
@@ -113,20 +113,20 @@ async def get_rooms_dashboard(
     return results
 
 
-@router.get(
-    "/db/rooms/{room_id}/details", response_model=RoomDetailsResponse, tags=["Rooms"]
-)
+@router.get("/rooms/{room_id}/details", response_model=RoomDetailsResponse)
 async def get_room_details(
     room_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific room by ID with nested racks, shelves and machines for dashboard details
+    """Fetch specific room by ID with nested racks, shelves and machines.
+
+    For dashboard details
+
     :param room_id: Room ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Room object
+    :return: Room object.
     """
     ctx.require_user()
     stmt = (
@@ -185,18 +185,18 @@ async def get_room_details(
     }
 
 
-@router.get("/db/rooms/{room_id}", response_model=RoomsResponse, tags=["Rooms"])
+@router.get("/rooms/{room_id}", response_model=RoomsResponse)
 async def get_room_by_id(
     room_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific room by ID
+    """Fetch specific room by ID.
+
     :param room_id: Room ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Room object
+    :return: Room object.
     """
     ctx.require_user()
     stmt = select(Rooms).filter(Rooms.id == room_id)
@@ -212,20 +212,20 @@ async def get_room_by_id(
     return room
 
 
-@router.patch("/db/rooms/{room_id}", response_model=RoomsResponse, tags=["Rooms"])
+@router.patch("/rooms/{room_id}", response_model=RoomsResponse)
 async def update_room(
     room_id: int,
     room_data: RoomsUpdate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update room
+    """Update room.
+
     :param room_id: Room ID
     :param room_data: Room data schema
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Updated Room
+    :return: Updated Room.
     """
     ctx.require_group_admin()
 
@@ -266,20 +266,18 @@ async def update_room(
         return room
 
 
-@router.delete(
-    "/db/rooms/{room_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Rooms"]
-)
+@router.delete("/rooms/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_room(
     room_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete Room
+    """Delete Room.
+
     :param room_id: Room ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: Success or error message.
     """
     ctx.require_group_admin()
 

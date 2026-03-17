@@ -1,28 +1,23 @@
-"""
-Database service layer.
+"""Database service layer.
 
 Handles CRUD operations, transaction management, password hashing (placeholder),
 and optimistic locking handling using SQLAlchemy sessions.
 """
 
+import inspect
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Type
+from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
-from app.utils.security import hash_password
-from app.db import schemas
-from app.db import models
 
 # pylint: disable=unused-import
-import app.db.listeners
-import inspect
-
 from app.auth.dependencies import RequestContext
-
+from app.db import models
+from app.utils.security import hash_password
 
 # ==========================
 #          UTILS
@@ -30,8 +25,8 @@ from app.auth.dependencies import RequestContext
 
 
 def set_user_context(db: Session, user_id: Optional[int] = None):
-    """
-    Injects user ID into the database session info.
+    """Injects user ID into the database session info.
+
     :param db: The current database session.
     :param user_id: The ID of the user performing the action (optional).
     """
@@ -40,8 +35,8 @@ def set_user_context(db: Session, user_id: Optional[int] = None):
 
 
 def handle_commit(db: Session):
-    """
-    Commits the transaction handling Optimistic Locking.
+    """Commits the transaction handling Optimistic Locking.
+
     :param db: The current database session.
     :raises HTTPException: 409 Conflict if concurrent modification is detected.
     """
@@ -56,8 +51,8 @@ def handle_commit(db: Session):
 
 
 async def init_service_team(db: AsyncSession):
-    """
-    Initializes a default service team if none exists.
+    """Initializes a default service team if none exists.
+
     :param db: The current database session.
     """
     stmt = select(models.Teams).filter(models.Teams.name == "Service Team")
@@ -73,8 +68,8 @@ async def init_service_team(db: AsyncSession):
 
 
 async def init_super_user(db: AsyncSession):
-    """
-    Initializes a super user if none exists.
+    """Initializes a super user if none exists.
+
     :param db: The current database session.
     """
     service_team = await init_service_team(db)
@@ -115,8 +110,8 @@ async def init_super_user(db: AsyncSession):
 
 
 async def init_virtual_lab(db: AsyncSession):
-    """
-    Initializes virtual lab if none exists.
+    """Initializes virtual lab if none exists.
+
     :param db: The current database session.
     """
     service_team = await init_service_team(db)
@@ -135,11 +130,10 @@ async def init_virtual_lab(db: AsyncSession):
 
 
 async def init_document(db: AsyncSession):
-    """
-    Initializes document that contains app documentation.
+    """Initializes document that contains app documentation.
+
     :param db: The current database session.
     """
-
     stmt = select(models.Documentation).filter(models.Documentation.title == "labbyn")
     result = await db.execute(stmt)
 
@@ -147,7 +141,12 @@ async def init_document(db: AsyncSession):
         content_raw = """
                 # Labbyn
 
-                Labbyn is an application for your datacenter, laboratory or homelab. You can monitor your infrastructure, set the location of each server or platform on an interactive dashboard, store information about your assets in an inventory and more. Everything runs on a modern GUI, is deployable on most Linux machines and is **OPEN SOURCE**.
+                Labbyn is an application for your datacenter, laboratory or homelab. 
+                You can monitor your infrastructure, set the location of each server 
+                or platform on an interactive dashboard, 
+                store information about your assets in an inventory and more. 
+                Everything runs on a modern GUI, 
+                is deployable on most Linux machines and is **OPEN SOURCE**.
 
                 ## Installation
 
@@ -161,7 +160,8 @@ async def init_document(db: AsyncSession):
                 ```
                 ### Application script
 
-                Inside the `scripts` directory there is an `app.sh` script that can be used to manage your application.
+                Inside the `scripts` directory there is an `app.sh` script 
+                that can be used to manage your application.
 
                 #### Arguments:
                 - `deploy` - start/install app on your machine
@@ -170,7 +170,8 @@ async def init_document(db: AsyncSession):
                 - `delete` - delete application
                 - `--dev` - run application in development mode
                 > [!IMPORTANT]
-                > **If you use the `delete` argument entire application will be deleted including containers, images, volumes and networks**
+                > **If you use the `delete` argument entire application will be deleted 
+                including containers, images, volumes and networks**
 
                 ### Example:
 
@@ -205,11 +206,13 @@ async def init_document(db: AsyncSession):
 
 
 def resolve_target_team_id(ctx: RequestContext, team_id: Optional[int] = None):
-    """
-    Resolve the target team ID based on the request context and optional team_id parameter.
+    """Resolve the target team ID.
+
+    Based on the request context and optional team_id parameter.
+
     :param ctx: User request context containing user and team information
     :param team_id: Team ID provided in the request (optional)
-    :return: Target team ID to be used for filtering or assignment
+    :return: Target team ID to be used for filtering or assignment.
     """
     if ctx.is_admin:
         return team_id
@@ -235,9 +238,7 @@ def resolve_target_team_id(ctx: RequestContext, team_id: Optional[int] = None):
 
 
 async def delete_old_history_logs(db: AsyncSession, days: int = 3) -> int:
-    """
-    Deletes history log entries older than a specified number of days.
-    """
+    """Deletes history log entries older than a specified number of days."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     stmt = delete(models.History).where(models.History.timestamp < cutoff)
 

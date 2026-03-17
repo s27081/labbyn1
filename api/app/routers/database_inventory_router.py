@@ -3,42 +3,42 @@
 from datetime import datetime
 from typing import List
 
-from app.database import get_async_db
-from app.db.models import Inventory, Rentals, User, UsersTeams
-from app.db.schemas import (
-    InventoryCreate,
-    InventoryResponse,
-    InventoryUpdate,
-    InventoryDetailResponse,
-)
-from app.utils.redis_service import acquire_lock
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from app.auth.dependencies import RequestContext
-from app.utils.database_service import resolve_target_team_id
 
-router = APIRouter()
+from app.auth.dependencies import RequestContext
+from app.database import get_async_db
+from app.db.models import Inventory, Rentals, User, UsersTeams
+from app.db.schemas import (
+    InventoryCreate,
+    InventoryDetailResponse,
+    InventoryResponse,
+    InventoryUpdate,
+)
+from app.utils.database_service import resolve_target_team_id
+from app.utils.redis_service import acquire_lock
+
+router = APIRouter(prefix="/db", tags=["Inventory"])
 
 
 @router.post(
-    "/db/inventory/",
+    "/inventory/",
     response_model=InventoryResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Inventory"],
 )
 async def create_item(
     inventory_data: InventoryCreate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create and add new inventory to database
+    """Create and add new inventory to database.
+
     :param inventory_data: Inventory data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Inventory item
+    :return: Inventory item.
     """
     data = inventory_data.model_dump()
     data["team_id"] = resolve_target_team_id(ctx, data.get("team_id"))
@@ -50,18 +50,16 @@ async def create_item(
     return obj
 
 
-@router.get(
-    "/db/inventory/", response_model=List[InventoryResponse], tags=["Inventory"]
-)
+@router.get("/inventory/", response_model=List[InventoryResponse])
 async def get_inventory(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all inventory items
+    """Fetch all inventory items.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of inventory items
+    :return: List of inventory items.
     """
     ctx.require_user()
     stmt = select(Inventory)
@@ -71,19 +69,20 @@ async def get_inventory(
 
 
 @router.get(
-    "/db/inventory/details",
+    "/inventory/details",
     response_model=List[InventoryDetailResponse],
-    tags=["Inventory"],
 )
 async def get_inventory_details(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all inventory items with detailed information from related tables (team, room, machine, category).
+    """Fetch all inventory items with detailed information.
+
+    Related tables (team, room, machine, category).
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of inventory items
+    :return: List of inventory items.
     """
     ctx.require_user()
     stmt = select(Inventory).options(
@@ -141,22 +140,21 @@ async def get_inventory_details(
 
 
 @router.post(
-    "/db/inventory/bulk",
+    "/inventory/bulk",
     response_model=List[InventoryResponse],
     status_code=status.HTTP_201_CREATED,
-    tags=["Inventory"],
 )
 async def bulk_create_items(
     items_data: List[InventoryCreate],
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Bulk import inventory items
+    """Bulk import inventory items.
+
     :param items_data: List of inventory item data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: Inventory items
     """
     ctx.require_group_admin()
 
@@ -176,20 +174,21 @@ async def bulk_create_items(
 
 
 @router.get(
-    "/db/inventory/details/{item_id}",
+    "/inventory/details/{item_id}",
     response_model=InventoryDetailResponse,
-    tags=["Inventory"],
 )
 async def get_inventory_item_details(
     item_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all specific item with detailed information from related tables (team, room, machine, category).
+    """Fetch all specific item with detailed information.
+
+    Related tables (team, room, machine, category).
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of inventory items
+    :return: List of inventory items.
     """
     ctx.require_user()
     stmt = (
@@ -248,20 +247,18 @@ async def get_inventory_item_details(
     }
 
 
-@router.get(
-    "/db/inventory/{item_id}", response_model=InventoryResponse, tags=["Inventory"]
-)
+@router.get("/inventory/{item_id}", response_model=InventoryResponse)
 async def get_inventory_item(
     item_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific inventory item by ID
+    """Fetch specific inventory item by ID.
+
     :param item_id: Item ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Inventory item
+    :return: Inventory item.
     """
     ctx.require_user()
     stmt = select(Inventory).filter(Inventory.id == item_id)
@@ -277,21 +274,19 @@ async def get_inventory_item(
     return item
 
 
-@router.patch(
-    "/db/inventory/{item_id}", response_model=InventoryResponse, tags=["Inventory"]
-)
+@router.patch("/inventory/{item_id}", response_model=InventoryResponse)
 async def update_item(
     item_id: int,
     item_data: InventoryUpdate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update item in inventory
+    """Update item in inventory.
+
     :param item_id: Item ID
     :param item_data: Item data schema
     :param db: Active database session
-    :return: Updated Inventory item
+    :return: Updated Inventory item.
     """
     ctx.require_user()
     async with acquire_lock(f"inventory_lock:{item_id}"):
@@ -322,20 +317,19 @@ async def update_item(
 
 
 @router.delete(
-    "/db/inventory/{item_id}",
+    "/inventory/{item_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Inventory"],
 )
 async def delete_item(
     item_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete item in inventory
+    """Delete item in inventory.
+
     :param item_id: Item ID
     :param db: Active database session
-    :return: None
+    :return: 204 No Content as success
     """
     ctx.require_user()
     async with acquire_lock(f"inventory_lock:{item_id}"):

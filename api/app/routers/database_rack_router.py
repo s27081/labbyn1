@@ -1,33 +1,32 @@
 """Router for Rack Database API CRUD."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from typing import List, Optional
 
-from app.database import get_async_db
-from app.db.models import Rack, Shelf, Rooms, Tags, Teams, Machines
 from app.auth.dependencies import RequestContext
+from app.database import get_async_db
+from app.db.models import Machines, Rack, Rooms, Shelf, Tags
 from app.db.schemas import (
     RackCreate,
-    RackUpdate,
     RackResponse,
+    RackUpdate,
     RackWithOrderedMachinesResponse,
 )
 from app.utils.database_service import resolve_target_team_id
 
-router = APIRouter(tags=["Racks"])
+router = APIRouter(prefix="/db", tags=["Racks"])
 
 
 def format_rack_output(rack: Rack):
-    """
-    Format rack output to display machine list ordered
+    """Format rack output to display machine list ordered.
 
     :param rack: Rack object
     :return: Formatted rack dict
     """
-    # Zakładamy, że relacje są już załadowane przez joinedload w wywołaniu nadrzędnym
     sorted_shelves = sorted(rack.shelves, key=lambda s: s.order or 0)
     ordered_machines = []
 
@@ -50,19 +49,19 @@ def format_rack_output(rack: Rack):
     }
 
 
-@router.get("/db/racks", response_model=List[RackResponse], tags=["Racks"])
+@router.get("/racks", response_model=List[RackResponse])
 async def get_racks(
     room_ids: Optional[List[int]] = Query(None),
     team_ids: Optional[List[int]] = Query(None),
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Returns ALL racks with their shelves and machines nested inside.
+    """Returns ALL racks with their shelves and machines nested inside.
+
     :param room_ids: Optional list of room IDs to filter by
     :param team_ids: Optional list of team IDs to filter by
     :param ctx: Request context for database and user info
-    :return: List of racks with nested structures
+    :return: List of racks with nested structures.
     """
     ctx.require_user()
     stmt = select(Rack)
@@ -90,16 +89,16 @@ async def get_racks(
     return racks
 
 
-@router.get("/db/racks-list", tags=["Racks"])
+@router.get("/racks-list")
 async def get_racks_list(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Returns a simple list of rack names and IDs for dropdowns
+    """Returns a simple list of rack names and IDs for dropdowns.
+
     :param db: Active database session
     :param ctx: Request context
-    :return: List of dictionaries with id and name
+    :return: List of dictionaries with id and name.
     """
     ctx.require_user()
     stmt = select(Rack.id, Rack.name)
@@ -111,18 +110,18 @@ async def get_racks_list(
     return [{"id": r.id, "name": r.name} for r in racks]
 
 
-@router.get("/db/racks/{rack_id}", response_model=RackResponse, tags=["Racks"])
+@router.get("/racks/{rack_id}", response_model=RackResponse)
 async def get_rack_detail(
     rack_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific rack by ID with its nested shelves and machines
+    """Fetch specific rack by ID with its nested shelves and machines.
+
     :param rack_id: ID of the rack
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Detailed rack object
+    :return: Detailed rack object.
     """
     ctx.require_user()
     stmt = select(Rack).where(Rack.id == rack_id)
@@ -148,22 +147,21 @@ async def get_rack_detail(
 
 
 @router.post(
-    "/db/racks",
+    "/racks",
     response_model=RackResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Racks"],
 )
 async def create_rack(
     rack: RackCreate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create a new rack with team and room validation
+    """Create a new rack with team and room validation.
+
     :param rack: Rack creation data
     :param db: Active database session
     :param ctx: Request context for user authorization
-    :return: Created rack object with names
+    :return: Created rack object with names.
     """
     ctx.require_user()
     effective_team_id = resolve_target_team_id(ctx, rack.team_id)
@@ -202,20 +200,20 @@ async def create_rack(
     return db_rack
 
 
-@router.patch("/db/racks/{rack_id}", response_model=RackResponse, tags=["Racks"])
+@router.patch("/racks/{rack_id}", response_model=RackResponse)
 async def update_rack(
     rack_id: int,
     rack_data: RackUpdate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update an existing rack including team or room changes
+    """Update an existing rack including team or room changes.
+
     :param rack_id: ID of the rack to update
     :param rack_data: Data fields to update
     :param db: Active database session
     :param ctx: Request context for permissions
-    :return: Updated rack object
+    :return: Updated rack object.
     """
     ctx.require_user()
 
@@ -272,20 +270,18 @@ async def update_rack(
     return db_rack
 
 
-@router.delete(
-    "/db/racks/{rack_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Racks"]
-)
+@router.delete("/racks/{rack_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_rack(
     rack_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete a specific rack from the database
+    """Delete a specific rack from the database.
+
     :param rack_id: ID of the rack to delete
     :param db: Active database session
     :param ctx: Request context for team-based access control
-    :return: No content response
+    :return: No content response.
     """
     ctx.require_user()
 
@@ -328,21 +324,22 @@ async def delete_rack(
 
 
 @router.get(
-    "/db/racks/rack_info/{rack_id}",
+    "/racks/rack_info/{rack_id}",
     response_model=RackWithOrderedMachinesResponse,
-    tags=["Racks"],
 )
 async def get_rack_info_by_id(
     rack_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch detailed information about a specific rack by ID including ordered machine list
+    """Fetch detailed information about a specific rack by ID.
+
+    Includes ordered machine list.
+
     :param rack_id: Rack ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Rack object
+    :return: Rack object.
     """
     ctx.require_user()
     stmt = (

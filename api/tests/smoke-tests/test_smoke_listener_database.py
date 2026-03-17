@@ -2,17 +2,17 @@
 
 import pytest
 from sqlalchemy import select
-from app.db import models
 
 # pylint: disable=unused-import
 import app.db.listeners
+from app.db import models
 
 pytestmark = [pytest.mark.smoke, pytest.mark.database, pytest.mark.asyncio]
 
 
 async def test_full_entity_lifecycle_with_history(db_session, unique_category_name):
-    """
-    Test full lifecycle of Entity for listener
+    """Test full lifecycle of Entity for listener.
+
     1. CREATE -> Check if history logs creating new entity
     2. UPDATE -> Check if history logs updating existing entity
     3. DELETE -> Check if history logs deleting entity

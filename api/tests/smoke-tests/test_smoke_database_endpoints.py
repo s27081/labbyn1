@@ -1,14 +1,12 @@
-"""
-API Smoke Tests.
-Verifies that HTTP endpoints are reachable, accept valid JSON,
-handle errors correctly (4xx), and persist data via the router layer.
-"""
+"""API Smoke Tests. Verifies that HTTP endpoints are reachable, accept valid JSON."""
 
 import uuid
+
 import pytest
+from sqlalchemy import select
+
 from app.db import models
 from app.main import app
-from sqlalchemy import select
 
 pytestmark = [
     pytest.mark.smoke,
@@ -19,10 +17,10 @@ pytestmark = [
 
 
 def unique_str(prefix: str):
-    """
-    Generate random name to avoid unique fields.
+    """Generate random name to avoid unique fields.
+
     :param prefix: Starting prefix
-    :return: Prefix along with random name
+    :return: Prefix along with random name.
     """
     return f"{prefix}_{uuid.uuid4().hex[:6]}"
 
@@ -35,12 +33,12 @@ async def test_health_check(test_client):
 
 @pytest.mark.rbac
 async def test_create_user_flow(test_client, service_header):
-    """
+    """Test user creation flow.
+
     Test 1: Create Team via API (201 Created)
     Test 2: Create User via API (201 Created)
-    Test 3: Try to Create Duplicate (409 Conflict)
+    Test 3: Try to Create Duplicate (409 Conflict).
     """
-
     ac = test_client
     headers = service_header
 
@@ -74,9 +72,7 @@ async def test_create_user_flow(test_client, service_header):
 
 @pytest.mark.rbac
 async def test_validation_error_handler(test_client, service_header):
-    """
-    Ensure Pydantic validation is working.
-    """
+    """Ensure Pydantic validation is working."""
     bad_payload = {"name": "Incomplete", "surname": "User"}
     response = await test_client.post(
         "/db/users/", json=bad_payload, headers=service_header
@@ -86,10 +82,10 @@ async def test_validation_error_handler(test_client, service_header):
 
 @pytest.mark.rbac
 async def test_resource_chain_creation(test_client, service_header, db_session):
-    """
-    Tests dependencies: Room -> Metadata -> Team -> Tag -> Rack -> Shelf -> Machine
-    """
+    """Tests chain creation.
 
+    Room -> Metadata -> Team -> Tag -> Rack -> Shelf -> Machine.
+    """
     ac = test_client
     headers = service_header
 
@@ -189,12 +185,12 @@ async def test_resource_chain_creation(test_client, service_header, db_session):
 
 
 async def test_machine_full_lifecycle(db_session):
-    """
+    """Test machine full lifecycle.
+
     Create advanced model object (new Machine).
     Checks relations: Machine -> Room, Machine -> Metadata, Machine -> Shelf.
-    Check is listener is registring operations properly
+    Check is listener is registring operations properly.
     """
-
     test_team = models.Teams(name=unique_str("TestTeam"))
     db_session.add(test_team)
     await db_session.commit()
@@ -218,7 +214,6 @@ async def test_machine_full_lifecycle(db_session):
     )
     db_session.add(author)
     await db_session.flush()
-    author_id = author.id
 
     rack = models.Rack(
         name=unique_str("Rack"),

@@ -1,13 +1,12 @@
-"""
-Concurrency Tests.
-Verifies locking mechanisms (Redis) and Transaction Isolation.
-"""
+"""Concurrency Tests Verifies locking mechanisms (Redis) and Transaction Isolation."""
+
+import asyncio
+import uuid
 
 import pytest
-import uuid
-import asyncio
-from sqlalchemy import select, func
-from app.db.models import Machines, Inventory, Rentals
+from sqlalchemy import func, select
+
+from app.db.models import Inventory, Machines, Rentals
 
 pytestmark = [
     pytest.mark.smoke,
@@ -18,16 +17,14 @@ pytestmark = [
 
 
 def unique_str(prefix: str):
-    """
-    Generate unique string for testing purposes.
-    """
+    """Generate unique string for testing purposes."""
     return f"{prefix}_{uuid.uuid4().hex[:6]}"
 
 
 @pytest.mark.database
 async def test_rental_race_condition_async(test_client, db_session, service_header):
-    """
-    Test Race Condition:
+    """Test Race Condition.
+
     Two users try to rent the SAME item at the EXACT SAME time.
 
     Expected behavior with Redis Lock:

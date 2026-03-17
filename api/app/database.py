@@ -2,15 +2,15 @@
 
 import os
 
+from dotenv import load_dotenv
 from fastapi import Depends
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyAccessTokenDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from dotenv import load_dotenv
-from app.db.models import User, AccessToken
 
 # pylint: disable=unused-import
 import app.db.listeners
+from app.db.models import AccessToken, User
 
 load_dotenv(".env/api.env")
 DB_USER = os.getenv("DB_USER", "user")
@@ -21,7 +21,6 @@ DB_PORT = os.getenv("DB_PORT", "5432")
 DB_URL = os.getenv("DATABASE_URL", "url")
 
 
-# ---- ASYNC ENGINE (LOGINS, USERS, TOKENS)
 async_engine = create_async_engine(
     DB_URL.replace("postgresql+psycopg2", "postgresql+asyncpg"),
     pool_pre_ping=True,
@@ -39,8 +38,8 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_async_db():
-    """
-    Dependency generator that yields an asynchronous database session.
+    """Dependency generator that yields an asynchronous database session.
+
     Ensures the session is closed after the request is finished.
     """
     async with AsyncSessionLocal() as session:
@@ -48,8 +47,8 @@ async def get_async_db():
 
 
 async def get_user_db(session=Depends(get_async_db)):
-    """
-    Dependency generator that yields a database session for user operations.
+    """Dependency generator that yields a database session for user operations.
+
     Ensures the session is closed after the request is finished.
     :param session: Active database session
     :return: SQLAlchemyUserDatabase instance
@@ -58,8 +57,8 @@ async def get_user_db(session=Depends(get_async_db)):
 
 
 async def get_access_token_db(session=Depends(get_async_db)):
-    """
-    Dependency generator that yields a database session for access token operations.
+    """Dependency generator that yields a database session for access token operations.
+
     Ensures the session is closed after the request is finished.
     :param session: Active database session
     :return: SQLAlchemyAccessTokenDatabase instance

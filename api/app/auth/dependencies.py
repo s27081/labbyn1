@@ -1,26 +1,27 @@
+"""Configuration of team and role filtering access."""
+
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.auth_config import fastapi_users
-from app.db.models import User, UserType, UsersTeams
 from app.database import get_async_db
+from app.db.models import User, UsersTeams, UserType
 
 current_active_user = fastapi_users.current_user(active=True)
 
 
 class RequestContext:
-    """
-    Holds user + permission context for a request.
+    """Holds user + permission context for a request.
+
     Provides helpers for access control and query filtering.
     """
 
     def __init__(self, db: AsyncSession = Depends(get_async_db)):
-        """
-        Init with database session, then call setup() to populate user info.
+        """Init with database session, then call setup() to populate user info.
+
         :param db: Active database session
         """
-
         self.db = db
 
         self.current_user: User | None = None
@@ -37,20 +38,19 @@ class RequestContext:
         current_user: User = Depends(current_active_user),
         db: AsyncSession = Depends(get_async_db),
     ):
-        """
-        Factory method to create and setup RequestContext.
+        """Factory method to create and setup RequestContext.
+
         :param: current_user: Authenticated user for the request
         :param: db: Active database session
         :return: RequestContext
         """
-
         self = cls(db)
         await self._setup(current_user)
         return self
 
     async def _setup(self, current_user: User):
-        """
-        Populates user info and permissions based on the current user.
+        """Populates user info and permissions based on the current user.
+
         :param current_user: Authenticated user for the request
         :return: None
         """
@@ -70,8 +70,8 @@ class RequestContext:
 
     @classmethod
     async def for_websocket(cls, user: User, db: AsyncSession):
-        """
-        Factory method to create RequestContext for WebSocket connections.
+        """Factory method to create RequestContext for WebSocket connections.
+
         :param user: Authenticated user for the WebSocket connection
         :param db: Active database session
         :return: RequestContext
@@ -81,8 +81,7 @@ class RequestContext:
         return self
 
     def team_filter(self, stmt: Select, model_class):
-        """
-        Applies team filtering to SQLAlchemy Select statements.
+        """Applies team filtering to SQLAlchemy Select statements.
 
         If the user is an admin, no filtering is applied.
         If the model has a team_id field, it filters by the user's team_ids.
@@ -92,7 +91,6 @@ class RequestContext:
         :param model_class: SQLAlchemy model class being queried
         :return: Modified Select statement with appropriate team filtering applied
         """
-
         if self.is_admin:
             return stmt
 
@@ -108,7 +106,10 @@ class RequestContext:
         return stmt
 
     def require_admin(self):
-        """Enforces that the current user has admin privileges. Raises HTTP 403 if not."""
+        """Enforces that the current user has admin privileges.
+
+        Raises HTTP 403 if not.
+        """
         if not self.is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -116,7 +117,10 @@ class RequestContext:
             )
 
     def require_group_admin(self):
-        """Enforces that the current user has group admin privileges. Raises HTTP 403 if not."""
+        """Enforces that the current user has group admin privileges.
+
+        Raises HTTP 403 if not.
+        """
         if not (self.is_admin or self.is_group_admin):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -124,7 +128,10 @@ class RequestContext:
             )
 
     def require_user(self):
-        """Enforces that the current user has at least user privileges. Raises HTTP 403 if not."""
+        """Enforces that the current user has at least user privileges.
+
+        Raises HTTP 403 if not.
+        """
         if not (self.is_admin or self.is_group_admin or self.is_user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Access denied."

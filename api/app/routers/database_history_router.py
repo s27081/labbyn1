@@ -1,34 +1,35 @@
 """Router for History Database API CRUD."""
 
 from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.auth.dependencies import RequestContext
 from app.database import get_async_db
 from app.db.models import (
-    History,
-    User,
-    EntityType,
     ActionType,
-    Machines,
-    Inventory,
-    Rooms,
     Categories,
+    EntityType,
+    History,
+    Inventory,
+    Machines,
+    Rooms,
+    User,
 )
 from app.db.schemas import HistoryEnhancedResponse
-from app.auth.dependencies import RequestContext
 
-router = APIRouter()
+router = APIRouter(prefix="/db", tags=["History"])
 
 
 def get_model_class(entity_type: EntityType):
-    """
-    Map EntityType to corresponding SQLAlchemy model class.
+    """Map EntityType to corresponding SQLAlchemy model class.
+
     :param entity_type: EntityType enum value
-    :return: Corresponding SQLAlchemy model class or None
+    :return: Corresponding SQLAlchemy model class or None.
     """
     mapping = {
         EntityType.MACHINES: Machines,
@@ -41,11 +42,11 @@ def get_model_class(entity_type: EntityType):
 
 
 async def resolve_entity_name(log: History, db: AsyncSession):
-    """
-    Fetch the name of the entity based on its type and ID.
-    log: History log entry
-    db: Active database session
-    :return: Readable name of the entity
+    """Fetch the name of the entity based on its type and ID.
+
+    :param log: History log entry
+    :param db: Active database session
+    :return: Readable name of the entity.
     """
     state = log.after_state or log.before_state
     if state:
@@ -68,12 +69,12 @@ async def resolve_entity_name(log: History, db: AsyncSession):
 
 
 async def _rollback_create(model_class, log_entry: History, db: AsyncSession) -> str:
-    """
-    Helper to rollback a CREATE action (performs DELETE).
-    model_class: SQLAlchemy model class
-    log_entry: History log entry
-    db: Active database session
-    :return: Success message
+    """Helper to rollback a CREATE action (performs DELETE).
+
+    :param model_class: SQLAlchemy model class
+    :param log_entry: History log entry
+    :param db: Active database session
+    :return: Success message.
     """
     stmt = select(model_class).filter(model_class.id == log_entry.entity_id)
     result = await db.execute(stmt)
@@ -92,12 +93,12 @@ async def _rollback_create(model_class, log_entry: History, db: AsyncSession) ->
 
 
 async def _rollback_delete(model_class, log_entry: History, db: AsyncSession) -> str:
-    """
-    Helper to rollback a DELETE action (performs CREATE/RESTORE).
-    model_class: SQLAlchemy model class
-    log_entry: History log entry
-    db: Active database session
-    :return: Success message
+    """Helper to rollback a DELETE action (performs CREATE/RESTORE).
+
+    :param model_class: SQLAlchemy model class
+    :param log_entry: History log entry
+    :param db: Active database session
+    :return: Success message.
     """
     if not log_entry.before_state:
         raise HTTPException(
@@ -114,12 +115,12 @@ async def _rollback_delete(model_class, log_entry: History, db: AsyncSession) ->
 
 
 async def _rollback_update(model_class, log_entry: History, db: AsyncSession) -> str:
-    """
-    Helper to rollback an UPDATE action (reverts fields).
-    model_class: SQLAlchemy model class
-    log_entry: History log entry
-    db: Active database session
-    :return: Success message
+    """Helper to rollback an UPDATE action (reverts fields).
+
+    :param model_class: SQLAlchemy model class
+    :param log_entry: History log entry
+    :param db: Active database session
+    :return: Success message.
     """
     stmt = select(model_class).filter(model_class.id == log_entry.entity_id)
     result = await db.execute(stmt)
@@ -141,20 +142,18 @@ async def _rollback_update(model_class, log_entry: History, db: AsyncSession) ->
     )
 
 
-@router.get(
-    "/db/history/", response_model=List[HistoryEnhancedResponse], tags=["History"]
-)
+@router.get("/history/", response_model=List[HistoryEnhancedResponse], tags=["History"])
 async def get_history_logs(
     limit=200,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Retrieve history logs with enhanced information.
+    """Retrieve history logs with enhanced information.
+
     :param limit: Maximum number of logs to retrieve
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: History logs with enhanced details
+    :return: History logs with enhanced details.
     """
     ctx.require_user()
     stmt = (
@@ -198,19 +197,17 @@ async def get_history_logs(
     return results
 
 
-@router.get(
-    "/db/history/{history_id}", response_model=HistoryEnhancedResponse, tags=["History"]
-)
+@router.get("/history/{history_id}", response_model=HistoryEnhancedResponse)
 async def get_history_by_id(
     history_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific history by ID
+    """Fetch specific history by ID.
+
     :param history_id: History ID
     :param db: Active database session
-    :return: History object
+    :return: History object.
     """
     ctx.require_user()
     stmt = select(History).filter(History.id == history_id)
@@ -225,22 +222,20 @@ async def get_history_by_id(
 
 
 @router.post(
-    "/db/history/{history_id}/rollback",
+    "/history/{history_id}/rollback",
     status_code=status.HTTP_200_OK,
-    tags=["History"],
 )
 async def rollback_history_entry(
     history_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Rollback a specific history entry by ID.
+    """Rollback a specific history entry by ID.
+
     :param history_id: History entry ID
     :param db: Active database session
-    :return: Success message
+    :return: Success message.
     """
-
     ctx.require_group_admin()
     stmt = (
         select(History)

@@ -2,16 +2,17 @@
 
 from typing import List
 
-from app.database import get_async_db
-from app.db.models import Tags, Machines, Rack, Rooms, Documentation
-from app.db.schemas import TagsCreate, TagsUpdate, TagsResponse, TagsAssignment
-from app.utils.redis_service import acquire_lock
-from app.auth.dependencies import RequestContext
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter()
+from app.auth.dependencies import RequestContext
+from app.database import get_async_db
+from app.db.models import Documentation, Machines, Rack, Rooms, Tags
+from app.db.schemas import TagsAssignment, TagsCreate, TagsResponse, TagsUpdate
+from app.utils.redis_service import acquire_lock
+
+router = APIRouter(prefix="/db", tags=["Tags"])
 
 ENTITY_MAP = {
     "machine": Machines,
@@ -22,19 +23,18 @@ ENTITY_MAP = {
 
 
 @router.get(
-    "/db/tags/",
+    "/tags",
     response_model=List[TagsResponse],
-    tags=["Tags"],
 )
 async def get_tags(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Get all tags from DB
+    """Get all tags.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of all tags
+    :return: List of all tags.
     """
     ctx.require_user()
     stmt = select(Tags)
@@ -42,12 +42,20 @@ async def get_tags(
     return result.scalars().all()
 
 
-@router.post("/db/tags/assign", status_code=status.HTTP_200_OK, tags=["Tags"])
+@router.post("/tags/assign", status_code=status.HTTP_200_OK)
 async def assign_tag(
     data: TagsAssignment,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
+    """Assign tag to object.
+
+    Can be used for machine, rack, room and documentation objects
+
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: List of all tags.
+    """
     ctx.require_user()
 
     model = ENTITY_MAP.get(data.entity_type.lower())
@@ -86,12 +94,20 @@ async def assign_tag(
         return {"message": f"Tag {tag.name} assigned to {data.entity_type}"}
 
 
-@router.post("/db/tags/detach", status_code=status.HTTP_200_OK, tags=["Tags"])
+@router.post("/tags/detach", status_code=status.HTTP_200_OK)
 async def detach_tag(
     data: TagsAssignment,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
+    """Detach tag from object.
+
+    Can be used for machine, rack, room and documentation objects
+
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: List of all tags.
+    """
     ctx.require_user()
 
     model = ENTITY_MAP.get(data.entity_type.lower())
@@ -117,27 +133,27 @@ async def detach_tag(
                 await db.commit()
 
         return {
-            "message": f"Tag {tag.name if tag else 'Unknown'} detached from {data.entity_type}"
+            "message": f"Tag {tag.name if tag else 'Unknown'} "
+                       f"detached from {data.entity_type}"
         }
 
 
 @router.post(
-    "/db/tags/",
+    "/tags",
     response_model=TagsResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Tags"],
 )
 async def create_tag(
     tag_data: TagsCreate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create new tag
+    """Create new tag.
+
     :param data: Tag data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: New tag item
+    :return: New tag item.
     """
     ctx.require_group_admin()
     obj = Tags(**tag_data.model_dump())
@@ -149,21 +165,20 @@ async def create_tag(
 
 
 @router.get(
-    "/db/tags/{tag_id}",
+    "/tags/{tag_id}",
     response_model=TagsResponse,
-    tags=["Tags"],
 )
 async def get_tag_by_id(
     tag_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Get specific tag from DB by ID
+    """Get specific tag by ID.
+
     :param tag_id: Tag ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Tag object
+    :return: Tag object.
     """
     ctx.require_user()
     stmt = select(Tags).filter(Tags.id == tag_id)
@@ -178,9 +193,8 @@ async def get_tag_by_id(
 
 
 @router.patch(
-    "/db/tags/{tag_id}",
+    "/tags/{tag_id}",
     response_model=TagsResponse,
-    tags=["Tags"],
 )
 async def update_tag(
     tag_id: int,
@@ -188,13 +202,13 @@ async def update_tag(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update tag data
+    """Update tag data.
+
     :param tag_id: Tag ID
     :param tag_data: Tag data schema
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Updated tag
+    :return: Updated tag.
     """
     ctx.require_group_admin()
     async with acquire_lock(f"tag_lock:{tag_id}"):
@@ -217,21 +231,20 @@ async def update_tag(
 
 
 @router.delete(
-    "/db/tags/{tag_id}",
+    "/tags/{tag_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Tags"],
 )
 async def delete_tag(
     tag_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete tag
+    """Delete tag.
+
     :param tag_id: Tag ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: None.
     """
     ctx.require_group_admin()
     async with acquire_lock(f"tag_lock:{tag_id}"):

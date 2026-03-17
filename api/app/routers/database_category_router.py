@@ -1,25 +1,22 @@
 """Router for Category Database API CRUD."""
 
 from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.auth.dependencies import RequestContext
 from app.database import get_async_db
 from app.db.models import Categories
-from app.db.schemas import (
-    CategoriesCreate,
-    CategoriesResponse,
-    CategoriesUpdate,
-)
+from app.db.schemas import CategoriesCreate, CategoriesResponse, CategoriesUpdate
 from app.utils.redis_service import acquire_lock
-from app.auth.dependencies import RequestContext
 
-router = APIRouter()
+router = APIRouter(prefix="/db", tags=["Categories"])
 
 
 @router.post(
-    "/db/categories/",
+    "/categories",
     response_model=CategoriesResponse,
     status_code=status.HTTP_201_CREATED,
     tags=["Categories"],
@@ -29,11 +26,12 @@ async def create_category(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create new category (Async)
+    """Create new category.
+
     :param category_data: Category data
     :param db: Async database session
-    :return: Category object
+    :param ctx: Request context for user and team info
+    :return: Category object.
     """
     ctx.require_admin()
 
@@ -44,18 +42,16 @@ async def create_category(
     return obj
 
 
-@router.get(
-    "/db/categories/", response_model=List[CategoriesResponse], tags=["Categories"]
-)
+@router.get("/categories", response_model=List[CategoriesResponse])
 async def get_categories(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all categories (Async)
+    """Fetch all categories.
+
     :param db: Async database session
     :param ctx: Request context for user and team info
-    :return: List of all categories
+    :return: List of all categories.
     """
     ctx.require_user()
 
@@ -63,20 +59,18 @@ async def get_categories(
     return result.scalars().all()
 
 
-@router.get(
-    "/db/categories/{cat_id}", response_model=CategoriesResponse, tags=["Categories"]
-)
+@router.get("/categories/{cat_id}", response_model=CategoriesResponse)
 async def get_category_by_id(
     cat_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific category by ID (Async)
+    """Fetch specific category by ID.
+
     :param cat_id: Category ID
     :param db: Async database session
     :param ctx: Request context for user and team info
-    :return: Category object
+    :return: Category object.
     """
     ctx.require_user()
 
@@ -90,22 +84,20 @@ async def get_category_by_id(
     return cat
 
 
-@router.patch(
-    "/db/categories/{cat_id}", response_model=CategoriesResponse, tags=["Categories"]
-)
+@router.patch("/categories/{cat_id}", response_model=CategoriesResponse)
 async def update_category(
     cat_id: int,
     cat_data: CategoriesUpdate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update Category (Async)
+    """Update Category.
+
     :param cat_id: Category ID
     :param cat_data: Category data schema
     :param db: Async database session
     :param ctx: Request context for user and team info
-    :return: Updated Category
+    :return: Updated Category.
     """
     ctx.require_admin()
 
@@ -127,21 +119,20 @@ async def update_category(
 
 
 @router.delete(
-    "/db/categories/{cat_id}",
+    "/categories/{cat_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Categories"],
 )
 async def delete_category(
     cat_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete category (Async)
+    """Delete category.
+
     :param cat_id: Category ID
     :param db: Async database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: 204 No Content as success
     """
     ctx.require_admin()
 

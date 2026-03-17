@@ -1,39 +1,36 @@
 """Router for Metadata Database API CRUD."""
 
 from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import get_async_db
-from app.db.models import Metadata, Machines
-from app.db.schemas import (
-    MetadataCreate,
-    MetadataResponse,
-    MetadataUpdate,
-)
-from app.utils.redis_service import acquire_lock
-from fastapi import APIRouter, Depends, HTTPException, status
-from app.auth.dependencies import RequestContext
 
-router = APIRouter()
+from app.auth.dependencies import RequestContext
+from app.database import get_async_db
+from app.db.models import Machines, Metadata
+from app.db.schemas import MetadataCreate, MetadataResponse, MetadataUpdate
+from app.utils.redis_service import acquire_lock
+
+router = APIRouter(prefix="/db", tags=["Machines Metadata"])
 
 
 @router.post(
-    "/db/metadata/",
+    "/metadata",
     response_model=MetadataResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Metadata"],
 )
 async def create_metadata(
     meta_data: MetadataCreate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create new metadata
+    """Create new metadata.
+
     :param meta_data: Metadata data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Metadata object
+    :return: Metadata object.
     """
     ctx.require_user()
     obj = Metadata(**meta_data.model_dump())
@@ -43,16 +40,16 @@ async def create_metadata(
     return obj
 
 
-@router.get("/db/metadata/", response_model=List[MetadataResponse], tags=["Metadata"])
+@router.get("/metadata", response_model=List[MetadataResponse])
 async def get_all_metadata(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all metadata records
+    """Fetch all metadata records.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of Metadata
+    :return: List of Metadata.
     """
     ctx.require_user()
     stmt = select(Metadata)
@@ -63,20 +60,18 @@ async def get_all_metadata(
     return result.scalars().all()
 
 
-@router.get(
-    "/db/metadata/{meta_id}", response_model=MetadataResponse, tags=["Metadata"]
-)
+@router.get("/metadata/{meta_id}", response_model=MetadataResponse)
 async def get_metadata(
     meta_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch metadata by ID
+    """Fetch metadata by ID.
+
     :param meta_id: Metadata ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Metadata object
+    :return: Metadata object.
     """
     ctx.require_user()
     stmt = select(Metadata).filter(Metadata.id == meta_id)
@@ -94,22 +89,20 @@ async def get_metadata(
     return obj
 
 
-@router.patch(
-    "/db/metadata/{meta_id}", response_model=MetadataResponse, tags=["Metadata"]
-)
+@router.patch("/metadata/{meta_id}", response_model=MetadataResponse)
 async def update_metadata(
     meta_id: int,
     data: MetadataUpdate,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update Metadata
+    """Update Metadata.
+
     :param meta_id: Metadata ID
     :param data: Metadata data schema
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Updated Metadata
+    :return: Updated Metadata.
     """
     ctx.require_user()
     async with acquire_lock(f"meta_lock:{meta_id}"):
@@ -134,20 +127,18 @@ async def update_metadata(
         return obj
 
 
-@router.delete(
-    "/db/metadata/{meta_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Metadata"]
-)
+@router.delete("/metadata/{meta_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_metadata(
     meta_id: int,
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete Metadata
+    """Delete Metadata.
+
     :param meta_id: Metadata ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: None.
     """
     ctx.require_user()
     async with acquire_lock(f"meta_lock:{meta_id}"):

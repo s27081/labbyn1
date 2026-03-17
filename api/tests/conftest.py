@@ -1,7 +1,7 @@
 """Pytest configuration file for setting up test fixtures."""
 
-import uuid
 import asyncio
+import uuid
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -15,8 +15,8 @@ from app.utils.redis_service import redis_manager
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """
-    Create an instance of the default event loop for each test module.
+    """Create an instance of the default event loop for each test module.
+
     :return: Event loop instance
     """
     loop = asyncio.get_event_loop_policy().new_event_loop()
@@ -26,8 +26,8 @@ def event_loop():
 
 @pytest.fixture(scope="session")
 async def test_client():
-    """
-    Pytest fixture to create an AsyncClient for the FastAPI app.
+    """Pytest fixture to create an AsyncClient for the FastAPI app.
+
     :return: AsyncClient instance
     """
     async with AsyncClient(
@@ -38,8 +38,8 @@ async def test_client():
 
 @pytest.fixture(scope="module")
 def redis_client_mock():
-    """
-    Pytest fixture to mock Redis client for testing.
+    """Pytest fixture to mock Redis client for testing.
+
     :return: Mocked Redis client
     """
     with mock.patch("app.utils.redis_service.get_redis_client") as mock_redis:
@@ -50,8 +50,8 @@ def redis_client_mock():
 
 @pytest.fixture(scope="function")
 async def db_session():
-    """
-    Create new database session.
+    """Create new database session.
+
     After test finish, close it.
     """
     async with AsyncSessionLocal() as session:
@@ -61,16 +61,16 @@ async def db_session():
 
 @pytest.fixture(scope="function")
 def unique_category_name():
-    """Genearate random category name to avoid unique problems"""
+    """Genearate random category name to avoid unique problems."""
     return f"SmokeTest-GPU-{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(scope="function")
 async def refresh_redis_client(monkeypatch):
-    """
-    Refresh redis client connection (for CI tests)
-     :param monkeypatch: Monkey patching fixture
-     :return: New redis client connection
+    """Refresh redis client connection (for CI tests).
+
+    :param monkeypatch: Monkey patching fixture
+    :return: New redis client connection
     """
     redis_manager.client = None
     redis_manager._loop = None
@@ -81,8 +81,8 @@ async def refresh_redis_client(monkeypatch):
 
 @pytest.fixture(scope="function")
 def mock_ansible_success(monkeypatch):
-    """
-    Mock ansible runner to always return success.
+    """Mock ansible runner to always return success.
+
     :param monkeypatch: Monkey patching fixture
     :return: Ansible runner mock
     """
@@ -98,8 +98,8 @@ def mock_ansible_success(monkeypatch):
 
 @pytest.fixture(scope="function")
 async def service_header(test_client):
-    """
-    Generate service authorization header for tests.
+    """Generate service authorization header for tests.
+
     :return: Authorization header with service token
     """
     res = await test_client.post(
@@ -111,8 +111,8 @@ async def service_header(test_client):
 
 @pytest.fixture(scope="function")
 async def alpha_admin_header(test_client, service_header):
-    """
-    Generate alpha admin authorization header for tests.
+    """Generate alpha admin authorization header for tests.
+
     :return: Authorization header with alpha admin token
     """
     admin_login = f"alpha_{uuid.uuid4().hex[:4]}"

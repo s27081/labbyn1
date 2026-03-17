@@ -1,5 +1,7 @@
-import pytest
+"""Test prometheus logic."""
 from unittest import mock
+
+import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
