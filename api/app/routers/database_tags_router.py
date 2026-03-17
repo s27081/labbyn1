@@ -64,34 +64,35 @@ async def assign_tag(
 
     async with acquire_lock(f"tag_assign_{data.entity_type}:{data.entity_id}"):
         stmt = select(model).filter(model.id == data.entity_id)
-
-        if data.entity_type.lower() == "documentation":
-            result = await db.execute(stmt)
-        else:
+        if data.entity_type.lower() != "documentation":
             stmt = ctx.team_filter(stmt, model)
-            result = await db.execute(stmt)
 
+        result = await db.execute(stmt)
         entity = result.scalar_one_or_none()
 
         if not entity:
-            raise HTTPException(
-                status_code=404, detail=f"{data.entity_type} not found or access denied"
-            )
+            raise HTTPException(status_code=404, detail="Entity not found")
 
-        tag_stmt = select(Tags).filter(Tags.id == data.tag_id)
+        tag_stmt = select(Tags).where(Tags.id.in_(data.tag_ids))
         tag_res = await db.execute(tag_stmt)
-        tag = tag_res.scalar_one_or_none()
+        tags_to_add = tag_res.scalars().all()
 
-        if not tag:
-            raise HTTPException(status_code=404, detail="Tag not found")
+        if not tags_to_add:
+            raise HTTPException(status_code=404, detail="No valid tags found")
 
-        await db.run_sync(lambda _: entity.tags)
+        await db.refresh(entity, ["tags"])
 
-        if tag not in entity.tags:
-            entity.tags.append(tag)
+        changed = False
+        for tag in tags_to_add:
+            if tag not in entity.tags:
+                entity.tags.append(tag)
+                changed = True
+
+        if changed:
             await db.commit()
+            return {"message": f"Tags assigned successfully to {data.entity_type}"}
 
-        return {"message": f"Tag {tag.name} assigned to {data.entity_type}"}
+        return {"message": "Tags were already assigned"}
 
 
 @router.post("/tags/detach", status_code=status.HTTP_200_OK)
@@ -122,19 +123,25 @@ async def detach_tag(
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found")
 
-        tag_stmt = select(Tags).filter(Tags.id == data.tag_id)
+        if not data.tag_ids:
+            raise HTTPException(status_code=400, detail="No tag IDs provided")
+
+        target_tag_id = data.tag_ids[0]
+
+        tag_stmt = select(Tags).filter(Tags.id == target_tag_id)
         tag_res = await db.execute(tag_stmt)
         tag = tag_res.scalar_one_or_none()
 
         if tag:
-            await db.run_sync(lambda _: entity.tags)
+            await db.refresh(entity, ["tags"])
+
             if tag in entity.tags:
                 entity.tags.remove(tag)
                 await db.commit()
 
         return {
             "message": f"Tag {tag.name if tag else 'Unknown'} "
-            f"detached from {data.entity_type}"
+                       f"detached from {data.entity_type}"
         }
 
 

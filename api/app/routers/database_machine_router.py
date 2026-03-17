@@ -4,6 +4,7 @@ import json
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -18,7 +19,6 @@ from app.db.schemas import (
 )
 from app.utils.database_service import resolve_target_team_id
 from app.utils.redis_service import acquire_lock, get_cache
-from sqlalchemy import delete, select
 
 router = APIRouter(prefix="/db", tags=["Machines"])
 
@@ -77,10 +77,18 @@ async def get_machines(
     :return: List of machines.
     """
     ctx.require_user()
-    stmt = select(Machines)
+    stmt = (
+        select(Machines)
+        .options(
+            joinedload(Machines.cpus),
+            joinedload(Machines.disks),
+            joinedload(Machines.team),
+            joinedload(Machines.machine_metadata)
+        )
+    )
     stmt = ctx.team_filter(stmt, Machines)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    return result.unique().scalars().all()
 
 
 @router.get("/machines/{machine_id}", response_model=MachinesResponse)
@@ -97,10 +105,19 @@ async def get_machine_by_id(
     :return: Machine object.
     """
     ctx.require_user()
-    stmt = select(Machines).filter(Machines.id == machine_id)
+    stmt = (
+        select(Machines)
+        .options(
+            joinedload(Machines.cpus),
+            joinedload(Machines.disks),
+            joinedload(Machines.team),
+            joinedload(Machines.machine_metadata)
+        )
+        .filter(Machines.id == machine_id)
+    )
     stmt = ctx.team_filter(stmt, Machines)
     result = await db.execute(stmt)
-    machine = result.scalar_one_or_none()
+    machine = result.unique().scalar_one_or_none()
 
     if not machine:
         raise HTTPException(
@@ -261,6 +278,8 @@ async def update_machine(
             )
 
         update_data = machine_data.model_dump(exclude_unset=True)
+        if "shelf_id" in update_data and (update_data["shelf_id"] == 0 or update_data["shelf_id"] == ""):
+            update_data["shelf_id"] = None
         if "team_id" in update_data and not ctx.is_admin:
             if update_data["team_id"] not in ctx.team_ids:
                 raise HTTPException(
@@ -282,7 +301,6 @@ async def update_machine(
                 if not cpu_item.get("id"):
                     db.add(CPUs(name=cpu_item["name"], machine_id=machine_id))
                 else:
-                    from sqlalchemy import update
                     await db.execute(
                         update(CPUs).where(CPUs.id == cpu_item["id"]).values(name=cpu_item["name"])
                     )
@@ -322,7 +340,7 @@ async def update_machine(
 
         await db.refresh(
             machine,
-            attribute_names=["team", "localization", "metadata", "shelf", "cpus", "disks"],
+            attribute_names=["team", "machine_metadata", "shelf", "cpus", "disks"],
         )
         return machine
 

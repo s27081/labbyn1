@@ -39,9 +39,15 @@ async def get_shelves_by_rack(
     if not rack:
         raise HTTPException(status_code=404, detail="Rack does not exist.")
 
-    stmt = select(Shelf).filter(Shelf.rack_id == rack_id).order_by(Shelf.order.desc())
+    stmt = (
+        select(Shelf)
+        .options(joinedload(Shelf.machines))
+        .filter(Shelf.rack_id == rack_id)
+        .order_by(Shelf.order.desc())
+    )
+
     result = await db.execute(stmt)
-    return result.scalars().all()
+    return result.unique().scalars().all()
 
 
 @router.get("/shelf/{shelf_id}", response_model=ShelfResponse)
