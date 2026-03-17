@@ -1,6 +1,12 @@
 """Router for Team Database API CRUD."""
 
 from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from app.auth.dependencies import RequestContext
 from app.database import get_db
 from app.db.models import Layout, Layouts, Machines, Rooms
 from app.db.schemas import (
@@ -12,10 +18,6 @@ from app.db.schemas import (
     LayoutUpdate,
 )
 from app.utils.redis_service import acquire_lock
-from app.auth.dependencies import RequestContext
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
 router = APIRouter(deprecated=True)
 
@@ -32,13 +34,14 @@ DO NOT use these endpoints for new features, as the underlying data model will b
     tags=["Layout"],
 )
 def create_layout_coord(
-    data: LayoutCreate, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    data: LayoutCreate,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create layout coordinate
+    """Create layout coordinate
     :param data: Layout data
     :param db: Active database session
-    :return: Layout object
+    :return: Layout object.
     """
     obj = Layout(**data.model_dump())
     db.add(obj)
@@ -49,12 +52,11 @@ def create_layout_coord(
 
 @router.get("/db/layout/", response_model=List[LayoutResponse], tags=["Layout"])
 def get_all_layout_coords(
-    db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)
 ):
-    """
-    Fetch all layout coordinates
+    """Fetch all layout coordinates
     :param db: Active database session
-    :return: List of Layout
+    :return: List of Layout.
     """
     if ctx.is_admin:
         return db.query(Layout).all()
@@ -71,13 +73,14 @@ def get_all_layout_coords(
 
 @router.get("/db/layout/{layout_id}", response_model=LayoutResponse, tags=["Layout"])
 def get_layout_coord_by_id(
-    layout_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    layout_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific layout coordinate by ID
+    """Fetch specific layout coordinate by ID
     :param layout_id: Layout ID
     :param db: Active database session
-    :return: Layout object
+    :return: Layout object.
     """
     query = db.query(Layout).filter(Layout.id == layout_id)
     if not ctx.is_admin:
@@ -97,19 +100,18 @@ def get_layout_coord_by_id(
     return obj
 
 
-@router.put("/db/layout/{layout_id}", response_model=LayoutResponse, tags=["Layout"])
+@router.patch("/db/layout/{layout_id}", response_model=LayoutResponse, tags=["Layout"])
 async def update_layout_coord(
     layout_id: int,
     data: LayoutUpdate,
     db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update layout coordinate
+    """Update layout coordinate
     :param layout_id: Layout ID
     :param data: Layout data
     :param db: Active database session
-    :return: Updated Layout
+    :return: Updated Layout.
     """
     async with acquire_lock(f"layout_lock:{layout_id}"):
         query = db.query(Layout).filter(Layout.id == layout_id)
@@ -136,13 +138,14 @@ async def update_layout_coord(
     "/db/layout/{layout_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Layout"]
 )
 async def delete_layout_coord(
-    layout_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    layout_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete layout coordinate
+    """Delete layout coordinate
     :param layout_id: Layout ID
     :param db: Active database session
-    :return: None
+    :return: None.
     """
     ctx.require_group_admin()
     async with acquire_lock(f"layout_lock:{layout_id}"):
@@ -163,13 +166,14 @@ async def delete_layout_coord(
     tags=["Layouts"],
 )
 def create_layout_assign(
-    data: LayoutsCreate, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    data: LayoutsCreate,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create layout assignment
+    """Create layout assignment
     :param data: Layouts data
     :param db: Active database session
-    :return: Layouts assignment
+    :return: Layouts assignment.
     """
     room = db.query(Rooms).filter(Rooms.id == data.room_id).first()
     if not room:
@@ -188,11 +192,12 @@ def create_layout_assign(
 
 
 @router.get("/db/layouts/", response_model=List[LayoutsResponse], tags=["Layouts"])
-def get_all_layouts(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
-    """
-    Fetch all layout assignments
+def get_all_layouts(
+    db: Session = Depends(get_db), ctx: RequestContext = Depends(RequestContext.create)
+):
+    """Fetch all layout assignments
     :param db: Active database session
-    :return: List of Layouts
+    :return: List of Layouts.
     """
     query = db.query(Layouts).join(Rooms)
     query = ctx.team_filter(query, Rooms)
@@ -203,13 +208,14 @@ def get_all_layouts(db: Session = Depends(get_db), ctx: RequestContext = Depends
     "/db/layouts/{layouts_id}", response_model=LayoutsResponse, tags=["Layouts"]
 )
 def get_layouts_assign_by_id(
-    layouts_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    layouts_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific layout assignment by ID
+    """Fetch specific layout assignment by ID
     :param layouts_id: Layouts ID
     :param db: Active database session
-    :return: Layouts object
+    :return: Layouts object.
     """
     query = db.query(Layouts).join(Rooms).filter(Layouts.id == layouts_id)
     query = ctx.team_filter(query, Rooms)
@@ -222,21 +228,20 @@ def get_layouts_assign_by_id(
     return obj
 
 
-@router.put(
+@router.patch(
     "/db/layouts/{layouts_id}", response_model=LayoutsResponse, tags=["Layouts"]
 )
 async def update_layout_assign(
     layouts_id: int,
     data: LayoutsUpdate,
     db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update layout assignment
+    """Update layout assignment
     :param layouts_id: Layouts ID
     :param data: Layouts data schema
     :param db: Active database session
-    :return: Updated Layouts
+    :return: Updated Layouts.
     """
     async with acquire_lock(f"layouts_lock:{layouts_id}"):
         query = db.query(Layouts).join(Rooms).filter(Layouts.id == layouts_id)
@@ -258,13 +263,14 @@ async def update_layout_assign(
     "/db/layouts/{layouts_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Layouts"]
 )
 async def delete_layout_assign(
-    layouts_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    layouts_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete layout assignment
+    """Delete layout assignment
     :param layouts_id: Layouts ID
     :param db: Active database session
-    :return: None
+    :return: None.
     """
     ctx.require_group_admin()
 

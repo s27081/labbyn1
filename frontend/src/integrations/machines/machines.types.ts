@@ -1,3 +1,5 @@
+import type { ApiTagsItem } from '../tags/tags.types'
+
 export type CPU = {
   id: number
   name: string
@@ -31,6 +33,45 @@ export interface MachinesResponse {
   version_id: number
 }
 
+export interface ApiMachineInfo {
+  id: number
+  name: string
+  ip_address: string
+  mac_address: string
+  os: string
+  cpus: Array<CPU>
+  ram: string | null
+  disks: Array<Disk>
+  serial_number: string | null
+  note: string | null
+  pdu_port: number
+  added_on: string // format: date-time
+  shelf_number: number | null
+  shelf_id: number | null
+  team_id: string | null
+  team_name: string
+  rack_id: number | null
+  rack_name: string
+  room_name: string
+  room_id: number | null
+  last_update: string // format: date-time
+  monitoring: boolean
+  ansible_access: boolean
+  ansible_root_access: boolean
+  tags: Array<ApiTagsItem>
+  network_status: string
+  prometheus_live_stats: ApiMachineInfoPrometheus
+  grafana_link: string
+  rack_link: string
+  map_link: string
+}
+
+export interface ApiMachineInfoPrometheus {
+  cpu_usage: string | null
+  ram_usage: string | null
+  disks: Array<Disk>
+}
+
 export interface MetadataResponse {
   id: number
   last_update: string | null
@@ -48,36 +89,45 @@ export interface PlatformFormValues {
   login?: string
   password?: string
   name?: string
-  ip?: string
-  mac?: string
-  location?: number
-  team?: number
+  ip_address?: string
+  mac_address?: string
+  localization_id?: number
+  team_id?: number
   pdu_port?: number
   os?: string
-  sn?: string
+  serial_number?: string
   note?: string
-  cpu?: Array<CPU>
+  cpus?: Array<CPU>
   ram?: string
-  disk?: Array<Disk>
-  layout?: number
+  disks?: Array<Disk>
+  shelf_id?: number
 }
 
 export interface MachineUpdate {
   name?: string | null
-  localization_id?: number | null
+  room_id?: number | null
   mac_address?: string | null
   ip_address?: string | null
   pdu_port?: number | null
-  team_id?: number | null
+  team_id?: string | null
   os?: string | null
   serial_number?: string | null
   note?: string | null
-  cpu?: Array<CPU> | null
+  cpus?: Array<CPU> | null
   ram?: string | null
-  disk?: Array<Disk> | null
-  layout_id?: number | null
+  disks?: Array<Disk> | null
+  shelf_id?: number | null
   metadata_id?: number | null
 }
 
+export interface AutoDiscoverPayload {
+  host: string
+  extra_vars: {
+    ansible_user: string
+    ansible_password: string
+  }
+}
+
 export type ApiMachineItem = MachinesResponse
+export type ApiMachineInfoResponse = Array<ApiMachineInfo>
 export type ApiMachineResponse = Array<MachinesResponse>

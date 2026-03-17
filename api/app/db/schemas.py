@@ -2,12 +2,12 @@
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
+from fastapi_users import schemas
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.db.models import UserType
-from fastapi_users import schemas
 
 # ==========================
 #          ENUMS
@@ -15,9 +15,7 @@ from fastapi_users import schemas
 
 
 class UserTypeEnum(str, Enum):
-    """
-    Enumeration of user roles within the system.
-    """
+    """Enumeration of user roles within the system."""
 
     ADMIN = "admin"
     GROUP_ADMIN = "group_admin"
@@ -25,9 +23,7 @@ class UserTypeEnum(str, Enum):
 
 
 class EntityTypeEnum(str, Enum):
-    """
-    Enumeration of entity types used for history tracking.
-    """
+    """Enumeration of entity types used for history tracking."""
 
     MACHINES = "machines"
     INVENTORY = "inventory"
@@ -37,9 +33,7 @@ class EntityTypeEnum(str, Enum):
 
 
 class ActionTypeEnum(str, Enum):
-    """
-    Enumeration of action types performed on entities.
-    """
+    """Enumeration of action types performed on entities."""
 
     CREATE = "create"
     UPDATE = "update"
@@ -52,9 +46,7 @@ class ActionTypeEnum(str, Enum):
 
 
 class VersionedBase(BaseModel):
-    """
-    Base model for versioned entities.
-    """
+    """Base model for versioned entities."""
 
     version_id: int = Field(..., description="Optimistic locking version")
 
@@ -65,6 +57,8 @@ class VersionedBase(BaseModel):
 
 
 class TagsBase(BaseModel):
+    """Base model for Tags containing shared attributes."""
+
     name: str = Field(..., max_length=50, description="Unique name of the tag")
     color: str = Field(..., max_length=50, description="Color hex or name")
 
@@ -91,14 +85,22 @@ class TagsResponse(TagsBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TagsAssignment(BaseModel):
+    """Used for tag assignment to various entities like rooms, machines, etc."""
+
+    tag_ids: List[int]
+    entity_id: int
+    entity_type: str
+
+
 # ==========================
 #          LAYOUT
 # ==========================
 
 
 class LayoutBase(BaseModel):
-    """
-    Base model for Layout containing shared attributes.
+    """Base model for Layout containing shared attributes.
+
     Represents 2D coordinates on a map/plan.
     """
 
@@ -111,8 +113,8 @@ class LayoutCreate(LayoutBase):
 
 
 class LayoutUpdate(BaseModel):
-    """
-    Schema for updating an existing Layout.
+    """Schema for updating an existing Layout.
+
     All fields are optional to allow partial updates.
     """
 
@@ -121,8 +123,8 @@ class LayoutUpdate(BaseModel):
 
 
 class LayoutResponse(LayoutBase):
-    """
-    Schema for reading Layout data (Response).
+    """Schema for reading Layout data (Response).
+
     Includes the database ID.
     """
 
@@ -137,9 +139,7 @@ class LayoutResponse(LayoutBase):
 
 
 class RoomsBase(BaseModel):
-    """
-    Base model for Rooms containing shared attributes.
-    """
+    """Base model for Rooms containing shared attributes."""
 
     name: str = Field(..., max_length=100, description="Unique name of the room")
     room_type: Optional[str] = Field(
@@ -157,8 +157,8 @@ class RoomsCreate(RoomsBase):
 
 
 class RoomsUpdate(BaseModel):
-    """
-    Schema for updating a Room.
+    """Schema for updating a Room.
+
     All fields are optional.
     """
 
@@ -168,9 +168,7 @@ class RoomsUpdate(BaseModel):
 
 
 class RoomsResponse(RoomsBase):
-    """
-    Schema for reading Room data.
-    """
+    """Schema for reading Room data."""
 
     id: int = Field(..., description="Unique identifier of the room")
     version_id: int
@@ -179,20 +177,20 @@ class RoomsResponse(RoomsBase):
 
 
 class RoomDashboardResponse(BaseModel):
-    """
-    Schema for displaying room information on the dashboard, including rack count and map link.
+    """Schema for displaying room information on the dashboard.
+
+    Including rack count and map link.
     """
 
     id: int
     name: str
+    team_name: str
     rack_count: int
     map_link: Optional[str] = None
 
 
 class LabRackMachine(BaseModel):
-    """
-    Schema for displaying machine information within a rack section on the lab details view.
-    """
+    """Schema for displaying machine information within a rack section."""
 
     id: int
     hostname: Optional[str]
@@ -201,19 +199,21 @@ class LabRackMachine(BaseModel):
 
 
 class LabRackSection(BaseModel):
-    """
-    Schema for displaying rack information within a room on the lab details view, including its machines.
+    """Schema for displaying rack information within a room on the lab details view.
+
+    Including its machines.
     """
 
     id: int
     name: str
-    tags: List[str]
+    tags: List[TagsBase]
     machines: List[LabRackMachine]
 
 
 class RoomDetailsResponse(BaseModel):
-    """
-    Schema for displaying detailed room information on the lab details view, including its racks and machines.
+    """Schema for displaying detailed room information on the lab details view.
+
+    including its racks and machines.
     """
 
     id: int
@@ -231,9 +231,7 @@ class RoomDetailsResponse(BaseModel):
 
 
 class LayoutsBase(BaseModel):
-    """
-    Base model for Layouts (Association table between Room and Layout coordinates).
-    """
+    """Base model for Layouts (Table between Room and Layout coordinates)."""
 
     name: str = Field(
         ..., max_length=100, description="Name of the specific layout configuration"
@@ -249,9 +247,7 @@ class LayoutsCreate(LayoutsBase):
 
 
 class LayoutsUpdate(BaseModel):
-    """
-    Schema for updating a Layout association.
-    """
+    """Schema for updating a Layout association."""
 
     name: Optional[str] = Field(None, max_length=100)
     room_id: Optional[int] = None
@@ -259,9 +255,7 @@ class LayoutsUpdate(BaseModel):
 
 
 class LayoutsResponse(LayoutsBase):
-    """
-    Schema for reading Layout association data.
-    """
+    """Schema for reading Layout association data."""
 
     id: int
     model_config = ConfigDict(from_attributes=True)
@@ -273,9 +267,7 @@ class LayoutsResponse(LayoutsBase):
 
 
 class CategoriesBase(BaseModel):
-    """
-    Base model for Inventory Categories.
-    """
+    """Base model for Inventory Categories."""
 
     name: str = Field(..., max_length=50, description="Name of the category")
 
@@ -285,17 +277,13 @@ class CategoriesCreate(CategoriesBase):
 
 
 class CategoriesUpdate(BaseModel):
-    """
-    Schema for updating a Category.
-    """
+    """Schema for updating a Category."""
 
     name: Optional[str] = Field(None, max_length=50)
 
 
 class CategoriesResponse(CategoriesBase):
-    """
-    Schema for reading Category data.
-    """
+    """Schema for reading Category data."""
 
     id: int
     version_id: int
@@ -308,8 +296,8 @@ class CategoriesResponse(CategoriesBase):
 
 
 class MetadataBase(BaseModel):
-    """
-    Base model for Machine Metadata.
+    """Base model for Machine Metadata.
+
     Contains configuration flags and update info.
     """
 
@@ -332,9 +320,7 @@ class MetadataCreate(MetadataBase):
 
 
 class MetadataUpdate(BaseModel):
-    """
-    Schema for updating Metadata.
-    """
+    """Schema for updating Metadata."""
 
     last_update: Optional[date] = None
     agent_prometheus: Optional[bool] = None
@@ -343,9 +329,7 @@ class MetadataUpdate(BaseModel):
 
 
 class MetadataResponse(MetadataBase):
-    """
-    Schema for reading Metadata.
-    """
+    """Schema for reading Metadata."""
 
     id: int
     version_id: int
@@ -358,9 +342,7 @@ class MetadataResponse(MetadataBase):
 
 
 class TeamsBase(BaseModel):
-    """
-    Base model for Teams.
-    """
+    """Base model for Teams."""
 
     name: str = Field(..., max_length=100, description="Name of the team")
 
@@ -370,17 +352,13 @@ class TeamsCreate(TeamsBase):
 
 
 class TeamsUpdate(BaseModel):
-    """
-    Schema for updating a Team.
-    """
+    """Schema for updating a Team."""
 
     name: Optional[str] = None
 
 
 class TeamsResponse(TeamsBase):
-    """
-    Schema for reading Team data.
-    """
+    """Schema for reading Team data."""
 
     id: int
     version_id: int
@@ -388,9 +366,7 @@ class TeamsResponse(TeamsBase):
 
 
 class TeamMemberSchema(BaseModel):
-    """
-    Schema for representing a team member in the context of team details.
-    """
+    """Schema for representing a team member in the context of team details."""
 
     id: int
     full_name: str
@@ -402,8 +378,9 @@ class TeamMemberSchema(BaseModel):
 
 
 class TeamDetailResponse(BaseModel):
-    """
-    Schema for reading detailed Team information, including members and admin details.
+    """Schema for reading detailed Team information.
+
+    Including members and admin details
     """
 
     id: int
@@ -420,36 +397,40 @@ class TeamDetailResponse(BaseModel):
 
 
 class TeamRackDetail(BaseModel):
-    """
-    Schema for representing a rack in the context of team details.
-    """
+    """Schema for representing a rack in the context of team details."""
 
+    id: int
     name: str
     team_name: str
-    tags: List[str]
+    tags: List[TagsBase]
     map_link: str
     machines_count: int
 
 
 class TeamMachineDetail(BaseModel):
-    """
-    Schema for representing a machine in the context of team details, including its location and identifiers.
+    """Schema for representing a machine in the context of team details.
+
+    Including its location and identifiers.
     """
 
+    id: int
     name: str
     ip_address: Optional[str]
     mac_address: Optional[str]
     team_name: str
     rack_name: str
     shelf_order: int
+    tags: List[TagsBase]
     # TODO: add tags after CPU and Disk merge
 
 
 class TeamInventoryDetail(BaseModel):
-    """
-    Schema for representing an inventory item in the context of team details, including its location and rental status.
+    """Schema for representing an inventory item in the context of team details.
+
+    Including its location and rental status.
     """
 
+    id: int
     name: str
     quantity: int
     team_name: str
@@ -462,13 +443,17 @@ class TeamInventoryDetail(BaseModel):
 
 
 class TeamFullDetailResponse(BaseModel):
-    """
-    Schema for reading full Team details, including members, racks, machines and inventory items associated with the team.
+    """Schema for reading full Team details.
+
+    Including members, racks, machines and inventory items associated with the team.
     """
 
     id: int
     name: str
     admins: List[Dict[str, str]] = Field(default=[], description="List of team admins")
+    members: List[TeamMemberSchema] = Field(
+        default=[], description="List of members in the team"
+    )
     racks: List[TeamRackDetail]
     machines: List[TeamMachineDetail]
     inventory: List[TeamInventoryDetail]
@@ -480,8 +465,9 @@ class TeamFullDetailResponse(BaseModel):
 
 
 class UserTeamMemebership(BaseModel):
-    """
-    Schema representing a user's membership in a team, used for displaying team info in user details.
+    """Schema representing a user's membership in a team.
+
+    Use for displaying team info in user details.
     """
 
     team_id: int
@@ -492,8 +478,8 @@ class UserTeamMemebership(BaseModel):
 
 
 class UserBase(BaseModel):
-    """
-    Base model for Users containing shared public attributes.
+    """Base model for Users containing shared public attributes.
+
     NOTE: Does NOT contain password.
     """
 
@@ -507,8 +493,8 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    """
-    Schema for creating a new User.
+    """Schema for creating a new User.
+
     REQUIRES a password field.
     """
 
@@ -516,7 +502,7 @@ class UserCreate(UserBase):
         None,
         min_length=6,
         max_length=255,
-        description="Optional manual password; if not provided, a random one will be generated",
+        description="If not provided, a random one will be generated",
     )
     team_ids: Optional[List[int]] = Field(
         default=[], description="List of team IDs to assign the user to upon creation"
@@ -524,8 +510,8 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
-    """
-    Schema for updating a User.
+    """Schema for updating a User.
+
     Allows updating profile info or password separately.
     """
 
@@ -543,8 +529,8 @@ class UserUpdate(BaseModel):
 
 
 class UserResponse(UserBase):
-    """
-    Schema for reading User data.
+    """Schema for reading User data.
+
     EXCLUDES the password for security reasons.
     """
 
@@ -557,8 +543,8 @@ class UserResponse(UserBase):
 
 
 class UserCreatedResponse(UserResponse):
-    """
-    Schema for reading User data upon creation.
+    """Schema for reading User data upon creation.
+
     INCLUDES the generated password.
     """
 
@@ -569,8 +555,8 @@ class UserCreatedResponse(UserResponse):
 
 
 class UserGroupInfo(BaseModel):
-    """
-    Model representing a simplified group/team information.
+    """Model representing a simplified group/team information.
+
     Used to provide group names in user-related responses.
     """
 
@@ -578,8 +564,8 @@ class UserGroupInfo(BaseModel):
 
 
 class UserInfo(BaseModel):
-    """
-    Basic user information for display purposes.
+    """Basic user information for display purposes.
+
     Includes identity, role and assigned groups.
     """
 
@@ -594,8 +580,8 @@ class UserInfo(BaseModel):
 
 
 class UserInfoExtended(UserInfo):
-    """
-    Extended user profile information for detailed views.
+    """Extended user profile information for detailed views.
+
     Includes avatar, contact details and group links.
     """
 
@@ -607,9 +593,7 @@ class UserInfoExtended(UserInfo):
 
 
 class UserTeamRoleUpdate(BaseModel):
-    """
-    Update schema for modifying a user's role within a specific team.
-    """
+    """Update schema for modifying a user's role within a specific team."""
 
     team_id: int
     is_group_admin: bool
@@ -621,8 +605,8 @@ class UserTeamRoleUpdate(BaseModel):
 
 
 class UserRead(schemas.BaseUser[int]):
-    """
-    Schema for reading user data.
+    """Schema for reading user data.
+
     Inherits from fastapi-users BaseUser schema.
     """
 
@@ -638,8 +622,8 @@ class UserRead(schemas.BaseUser[int]):
 
 
 class UserCreate(schemas.BaseUserCreate):
-    """
-    Schema for creating a new user.
+    """Schema for creating a new user.
+
     Inherits from fastapi-users BaseUserCreate schema.
     """
 
@@ -652,8 +636,8 @@ class UserCreate(schemas.BaseUserCreate):
 
 
 class UserUpdate(schemas.BaseUserUpdate):
-    """
-    Schema for updating user data.
+    """Schema for updating user data.
+
     Inherits from fastapi-users BaseUserUpdate schema.
     """
 
@@ -669,33 +653,26 @@ class UserUpdate(schemas.BaseUserUpdate):
 
 
 class CPUBase(BaseModel):
-    """
-    Base model for CPUs.
-    """
+    """Base model for CPUs."""
 
+    id: int
     name: str
 
 
 class CPUCreate(CPUBase):
-    """
-    Schema for creating CPUs.
-    """
+    """Schema for creating CPUs."""
 
     machine_id: int
 
 
 class CPUUpdate(CPUBase):
-    """
-    Schema for updating CPUs.
-    """
+    """Schema for updating CPUs."""
 
     name: Optional[str] = Field(None, max_length=100, description="CPU naming")
 
 
 class CPUResponse(CPUBase):
-    """
-    Schema for reading cpus.
-    """
+    """Schema for reading cpus."""
 
     id: int
     name: str
@@ -704,35 +681,28 @@ class CPUResponse(CPUBase):
 
 
 class DisksBase(BaseModel):
-    """
-    Base model for Disks.
-    """
+    """Base model for Disks."""
 
+    id: int
     name: str
     capacity: Optional[str]
 
 
 class DiskCreate(DisksBase):
-    """
-    Schema for creating disks.
-    """
+    """Schema for creating disks."""
 
     machine_id: int
 
 
 class DiskUpdate(DisksBase):
-    """
-    Schema for updating disks.
-    """
+    """Schema for updating disks."""
 
     name: Optional[str] = Field(None, max_length=100, description="Disk naming")
     capacity: Optional[str] = Field(None, max_length=50, description="Disk capacity")
 
 
 class DiskResponse(DisksBase):
-    """
-    Schema for reading disks.
-    """
+    """Schema for reading disks."""
 
     id: int
     name: str
@@ -747,9 +717,7 @@ class DiskResponse(DisksBase):
 
 
 class MachinesBase(BaseModel):
-    """
-    Base model for Machines.
-    """
+    """Base model for Machines."""
 
     name: str = Field(..., max_length=100, description="Unique machine name/hostname")
     localization_id: int = Field(
@@ -773,16 +741,16 @@ class MachinesBase(BaseModel):
     disks: Optional[List[DisksBase]] = Field(
         default=[], description="Disk/Storage specification"
     )
-    metadata_id: int = Field(..., description="ID of associated metadata record")
+    metadata_id: Optional[int] = Field(
+        ..., description="ID of associated metadata record"
+    )
     shelf_id: Optional[int] = Field(
         None, description="ID of layout coordinates if applicable"
     )
 
 
 class MachinesCreate(MachinesBase):
-    """
-    Schema for creating a Machine.
-    """
+    """Schema for creating a Machine."""
 
     added_on: datetime = Field(
         default_factory=datetime.now,
@@ -791,29 +759,28 @@ class MachinesCreate(MachinesBase):
 
 
 class MachinesUpdate(BaseModel):
-    """
-    Schema for updating a Machine.
-    """
+    """Schema for updating a Machine."""
 
     name: Optional[str] = Field(None, max_length=100)
-    localization_id: Optional[int] = None
+    room_id: Optional[int] = None
+    ip_address: Optional[str] = Field(None, max_length=16)
     mac_address: Optional[str] = Field(None, max_length=17)
     pdu_port: Optional[int] = None
     team_id: Optional[int] = None
     os: Optional[str] = Field(None, max_length=30)
     serial_number: Optional[str] = Field(None, max_length=50)
     note: Optional[str] = Field(None, max_length=500)
-    cpu: Optional[str] = Field(None, max_length=100)
+    cpus: Optional[List[CPUBase]] = Field(default=[], description="CPU specification")
     ram: Optional[str] = Field(None, max_length=100)
-    disk: Optional[str] = Field(None, max_length=100)
+    disks: Optional[List[DisksBase]] = Field(
+        default=[], description="Disk/Storage specification"
+    )
     shelf_id: Optional[int] = None
     metadata_id: Optional[int] = None
 
 
 class MachinesResponse(MachinesBase):
-    """
-    Schema for reading Machine data.
-    """
+    """Schema for reading Machine data."""
 
     id: int
     added_on: datetime
@@ -824,12 +791,11 @@ class MachinesResponse(MachinesBase):
 
 
 class MachineInRackResponse(BaseModel):
-    """
-    Schema for reading Machine data within a Rack context.
+    """Schema for reading Machine data within a Rack context.
+
     Includes shelf information.
     """
 
-    id: int
     name: str
     ip_address: Optional[str]
     mac_address: Optional[str]
@@ -839,9 +805,9 @@ class MachineInRackResponse(BaseModel):
 
 
 class MachineFullDetailResponse(BaseModel):
-    """
-    Complete machine detail schema combining database records
-    with live Prometheus metrics.
+    """Complete machine detail schema.
+
+    Combining database records with live Prometheus metrics
     """
 
     id: int
@@ -857,9 +823,14 @@ class MachineFullDetailResponse(BaseModel):
     pdu_port: Optional[int]
     added_on: datetime
 
+    team_id: Optional[int]
     team_name: str
+    rack_id: Optional[int]
     rack_name: Optional[str]
     room_name: str
+    room_id: int
+    shelf_number: int
+    shelf_id: int
 
     last_update: Optional[date]
     monitoring: bool
@@ -888,9 +859,7 @@ class MachineFullDetailResponse(BaseModel):
 
 
 class RentalsBase(BaseModel):
-    """
-    Base model for Rentals.
-    """
+    """Base model for Rentals."""
 
     item_id: int = Field(..., description="ID of the inventory item being rented")
     start_date: date = Field(..., description="Start date of the rental")
@@ -903,9 +872,7 @@ class RentalsCreate(RentalsBase):
 
 
 class RentalsUpdate(BaseModel):
-    """
-    Schema for updating a Rental record.
-    """
+    """Schema for updating a Rental record."""
 
     item_id: Optional[int] = None
     start_date: Optional[date] = None
@@ -914,9 +881,7 @@ class RentalsUpdate(BaseModel):
 
 
 class RentalsResponse(RentalsBase):
-    """
-    Schema for reading Rental data.
-    """
+    """Schema for reading Rental data."""
 
     id: int
     version_id: int
@@ -924,6 +889,8 @@ class RentalsResponse(RentalsBase):
 
 
 class RentalInfo(BaseModel):
+    """Schema for reading Rental info."""
+
     id: int
     borrower_name: str
     borrower_team: str
@@ -932,6 +899,8 @@ class RentalInfo(BaseModel):
 
 
 class RentalReturn(BaseModel):
+    """Schema for returning rental."""
+
     quantity: Optional[int] = Field(
         None,
         ge=1,
@@ -945,9 +914,7 @@ class RentalReturn(BaseModel):
 
 
 class InventoryBase(BaseModel):
-    """
-    Base model for Inventory items.
-    """
+    """Base model for Inventory items."""
 
     name: str = Field(..., max_length=100, description="Name of the item")
     quantity: int = Field(..., description="Quantity available")
@@ -970,9 +937,7 @@ class InventoryCreate(InventoryBase):
 
 
 class InventoryUpdate(BaseModel):
-    """
-    Schema for updating an Inventory item.
-    """
+    """Schema for updating an Inventory item."""
 
     name: Optional[str] = Field(None, max_length=100)
     quantity: Optional[int] = None
@@ -985,9 +950,7 @@ class InventoryUpdate(BaseModel):
 
 
 class InventoryResponse(InventoryBase):
-    """
-    Schema for reading Inventory data.
-    """
+    """Schema for reading Inventory data."""
 
     id: int
     version_id: int
@@ -995,14 +958,19 @@ class InventoryResponse(InventoryBase):
 
 
 class InventoryDetailResponse(BaseModel):
+    """Schema for reading Invetory details."""
+
     id: int
     name: str
     total_quantity: int
     in_stock_quantity: int
+    team_id: Optional[int]
     team_name: str
     room_name: str
+    room_id: Optional[int]
     machine_info: Optional[str]
     category_name: str
+    category_id: Optional[int]
     location_link: str
     active_rentals: List[RentalInfo] = []
 
@@ -1015,9 +983,7 @@ class InventoryDetailResponse(BaseModel):
 
 
 class HistoryBase(BaseModel):
-    """
-    Base model for History logs.
-    """
+    """Base model for History logs."""
 
     entity_type: EntityTypeEnum = Field(
         ..., description="Type of entity changed (e.g., machine, user)"
@@ -1048,9 +1014,7 @@ class HistoryCreate(HistoryBase):
 
 
 class HistoryResponse(HistoryBase):
-    """
-    Schema for reading History logs.
-    """
+    """Schema for reading History logs."""
 
     id: int
     timestamp: datetime = Field(..., description="Exact time when the action occurred")
@@ -1063,6 +1027,8 @@ class HistoryResponse(HistoryBase):
 
 
 class DashboardItem(BaseModel):
+    """Schema for dashboard item."""
+
     type: str
     id: str
     location: str
@@ -1070,11 +1036,15 @@ class DashboardItem(BaseModel):
 
 
 class DashboardSection(BaseModel):
+    """Schema for dashboard section."""
+
     name: str
     items: List[DashboardItem]
 
 
 class DashboardResponse(BaseModel):
+    """Schema for dashboard response."""
+
     sections: List[DashboardSection]
 
 
@@ -1084,8 +1054,8 @@ class DashboardResponse(BaseModel):
 
 
 class UserShortResponse(BaseModel):
-    """
-    Short schema for User data (e.g., in lists or logs).
+    """Short schema for User data (e.g., in lists or logs).
+
     Only login is needed for audit logs.
     """
 
@@ -1094,8 +1064,8 @@ class UserShortResponse(BaseModel):
 
 
 class HistoryEnhancedResponse(HistoryResponse):
-    """
-    Enhanced history schema with resolved entity names and user details.
+    """Enhanced history schema with resolved entity names and user details.
+
     Inherits fields like timestamp, action, extra_data from HistoryResponse.
     """
 
@@ -1114,9 +1084,7 @@ class HistoryEnhancedResponse(HistoryResponse):
 
 
 class FirstChangePasswordRequest(BaseModel):
-    """
-    Schema for the first-time password setup.
-    """
+    """Schema for the first-time password setup."""
 
     new_password: str = Field(..., min_length=6, max_length=255)
 
@@ -1127,9 +1095,7 @@ class FirstChangePasswordRequest(BaseModel):
 
 
 class DocumentationBase(BaseModel):
-    """
-    Base model containing all shared attributes from the DB.
-    """
+    """Base model containing all shared attributes from the DB."""
 
     title: str = Field(
         ..., max_length=50, description="Unique title of the documentation"
@@ -1140,10 +1106,7 @@ class DocumentationBase(BaseModel):
 
 
 class DocumentationCreate(DocumentationBase):
-    """
-    When creating documentation, you usually pass a list of tag IDs
-    to link them in the association table.
-    """
+    """Extend base doc model by Tags."""
 
     tag_ids: Optional[List[int]] = Field(
         default=[], description="List of existing Tag IDs"
@@ -1151,6 +1114,8 @@ class DocumentationCreate(DocumentationBase):
 
 
 class DocumentationUpdate(BaseModel):
+    """Schema for documentation update."""
+
     title: Optional[str] = Field(None, max_length=50)
     content: Optional[str] = Field(
         None, max_length=5000, description="Documentation content"
@@ -1160,6 +1125,8 @@ class DocumentationUpdate(BaseModel):
 
 
 class DocumentationResponse(DocumentationBase):
+    """Schema for adding documentation."""
+
     id: int
     author: str
     added_on: datetime
@@ -1177,8 +1144,8 @@ class DocumentationResponse(DocumentationBase):
 
 
 class ShelfBase(BaseModel):
-    """
-    Base model for Shelf containing shared attributes.
+    """Base model for Shelf containing shared attributes.
+
     Represents a shelf within a rack, which can hold machines or inventory.
     """
 
@@ -1193,8 +1160,8 @@ class ShelfCreate(ShelfBase):
 
 
 class ShelfUpdate(BaseModel):
-    """
-    Schema for updating an existing Shelf.
+    """Schema for updating an existing Shelf.
+
     All fields are optional to allow partial updates.
     """
 
@@ -1204,8 +1171,8 @@ class ShelfUpdate(BaseModel):
 
 
 class ShelfResponse(BaseModel):
-    """
-    Schema for reading Shelf data (Response).
+    """Schema for reading Shelf data (Response).
+
     Includes the database ID.
     """
 
@@ -1219,8 +1186,8 @@ class ShelfResponse(BaseModel):
 
 
 class RackBase(BaseModel):
-    """
-    Base model for Rack containing shared attributes.
+    """Base model for Rack containing shared attributes.
+
     Represents a rack that can contain multiple shelves.
     """
 
@@ -1243,24 +1210,28 @@ class RackCreate(RackBase):
 
 
 class RackUpdate(BaseModel):
-    """
-    Schema for updating an existing Rack.
+    """Schema for updating an existing Rack.
+
     All fields are optional to allow partial updates.
     """
 
     name: Optional[str] = Field(None, max_length=100, description="Name of the rack")
     room_id: Optional[int] = Field(None, description="Location of the rack")
-    layout_id: Optional[int] = Field(
-        None, description="ID of the layout coordinates for this rack"
-    )
     team_id: Optional[int] = Field(
         None, description="ID of the team that owns this rack (if applicable)"
+    )
+    tag_ids: Optional[List[int]] = Field(
+        default=[], description="List of existing Tag IDs to associate with this rack"
+    )
+    machines: Optional[List[Any]] = Field(
+        default=[],
+        description="List of existing machines with associated shelf orders to place in the rack",
     )
 
 
 class RackResponse(RackBase):
-    """
-    Schema for reading Rack data (Response).
+    """Schema for reading Rack data (Response).
+
     Includes the database ID and nested shelves.
     """
 
@@ -1273,6 +1244,8 @@ class RackResponse(RackBase):
 
 
 class RackWithOrderedMachinesResponse(RackBase):
+    """Schema for reading Machines within Rack."""
+
     id: int = Field(..., description="Unique identifier of the rack")
     team_name: Optional[str]
     tags: List[TagsResponse] = []

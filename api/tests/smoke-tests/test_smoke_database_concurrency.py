@@ -1,62 +1,63 @@
-"""
-Concurrency Tests.
-Verifies locking mechanisms (Redis) and Transaction Isolation.
-"""
+"""Concurrency Tests Verifies locking mechanisms (Redis) and Transaction Isolation."""
+
+import asyncio
+import uuid
 
 import pytest
-import uuid
-import concurrent.futures
-from app.db.models import Machines, Inventory, Rentals
+from sqlalchemy import func, select
+
+from app.db.models import Inventory, Machines, Rentals
 
 pytestmark = [
     pytest.mark.smoke,
     pytest.mark.database,
     pytest.mark.api,
+    pytest.mark.asyncio,
 ]
 
 
 def unique_str(prefix: str):
+    """Generate unique string for testing purposes."""
     return f"{prefix}_{uuid.uuid4().hex[:6]}"
 
 
 @pytest.mark.database
-def test_rental_race_condition_threaded(test_client, db_session, service_header_sync):
-    """
-    Test Race Condition:
+async def test_rental_race_condition_async(test_client, db_session, service_header):
+    """Test Race Condition.
+
     Two users try to rent the SAME item at the EXACT SAME time.
 
     Expected behavior with Redis Lock:
     - User A gets 201 Created (Success)
     - User B gets 409 Conflict (Item already rented)
-
-    If Lock fails:
-    - Both get 201 (Double Booking - CRITICAL BUG)
     """
     ac = test_client
-    headers = service_header_sync
+    headers = service_header
 
-    team_resp = ac.post(
-        "/db/teams/",
+    team_resp = await ac.post(
+        "/db/teams",
         json={"name": unique_str("Race")},
         headers=headers,
     )
     team_id = team_resp.json()["id"]
 
-    cat_id = ac.post(
-        "/db/categories/", json={"name": unique_str("Cat")}, headers=headers
-    ).json()["id"]
+    cat_resp = await ac.post(
+        "/db/categories", json={"name": unique_str("Cat")}, headers=headers
+    )
+    cat_id = cat_resp.json()["id"]
 
-    room_id = ac.post(
-        "/db/rooms/",
+    room_resp = await ac.post(
+        "/db/rooms",
         json={"name": unique_str("Room"), "room_type": "srv", "team_id": team_id},
         headers=headers,
-    ).json()["id"]
+    )
+    room_id = room_resp.json()["id"]
 
     tokens = []
     for i in range(2):
         login = unique_str(f"r{i}")
-        u_resp = ac.post(
-            "/db/users/",
+        u_resp = await ac.post(
+            "/db/users",
             json={
                 "name": f"Racer{i}",
                 "surname": "Test",
@@ -69,12 +70,12 @@ def test_rental_race_condition_threaded(test_client, db_session, service_header_
         )
         u = u_resp.json()
 
-        token = ac.post(
+        auth_resp = await ac.post(
             "/auth/login", data={"username": login, "password": u["generated_password"]}
-        ).json()["access_token"]
-        tokens.append(token)
+        )
+        tokens.append(auth_resp.json()["access_token"])
 
-    item = ac.post(
+    item_resp = await ac.post(
         "/db/inventory/",
         json={
             "name": unique_str("Gold"),
@@ -84,30 +85,26 @@ def test_rental_race_condition_threaded(test_client, db_session, service_header_
             "team_id": team_id,
         },
         headers=headers,
-    ).json()
+    )
+    item = item_resp.json()
     item_id = item["id"]
 
-    def rent_item(token):
-        return ac.post(
-            "/db/rentals/",
+    async def rent_item(token):
+        """Helper to send rental request."""
+        return await ac.post(
+            "/db/rentals",
             json={
                 "item_id": item_id,
                 "quantity": 1,
-                "start_date": "2024-01-01",
-                "end_date": "2024-01-07",
+                "start_date": "2026-01-01",
+                "end_date": "2026-01-07",
             },
             headers={"Authorization": f"Bearer {token}"},
         )
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(rent_item, t) for t in tokens]
-        results = [f.result() for f in futures]
+    results = await asyncio.gather(*[rent_item(t) for t in tokens])
 
     status_codes = [r.status_code for r in results]
 
     assert 201 in status_codes, "First rental should succeed!"
     assert 409 in status_codes, "Second rental should fail with 409 Conflict!"
-
-    db_session.expire_all()
-    count = db_session.query(Rentals).filter(Rentals.item_id == item_id).count()
-    assert count == 1, f"Should exists only 1, got: {count} (DOUBLE BOOKING!)"

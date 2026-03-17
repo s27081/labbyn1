@@ -1,35 +1,33 @@
 """Pytest configuration file for setting up test fixtures."""
 
-import uuid
 import asyncio
+import uuid
 from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi.testclient import TestClient
-
-from app.database import SessionLocal
-from app.main import app
-from app.utils import redis_service
-from app.utils.redis_service import REDIS_URL
-from app.utils.redis_service import redis_manager
 from httpx import ASGITransport, AsyncClient
 
-
-@pytest.fixture(scope="session")
-def test_client():
-    """
-    Pytest fixture to create a TestClient for the FastAPI app.
-    :return: TestClient instance
-    """
-    with TestClient(app) as client:
-        yield client
+from app.database import AsyncSessionLocal
+from app.main import app
+from app.utils.redis_service import redis_manager
 
 
 @pytest.fixture(scope="session")
-async def test_client_async():
+def event_loop():
+    """Create an instance of the default event loop for each test module.
+
+    :return: Event loop instance
     """
-    Pytest fixture to create an AsyncClient for the FastAPI app.
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest.fixture(scope="session")
+async def test_client():
+    """Pytest fixture to create an AsyncClient for the FastAPI app.
+
     :return: AsyncClient instance
     """
     async with AsyncClient(
@@ -38,21 +36,10 @@ async def test_client_async():
         yield client
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """
-    Create an instance of the default event loop for each test module.
-    :return: Event loop instance
-    """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest.fixture(scope="module")
 def redis_client_mock():
-    """
-    Pytest fixture to mock Redis client for testing.
+    """Pytest fixture to mock Redis client for testing.
+
     :return: Mocked Redis client
     """
     with mock.patch("app.utils.redis_service.get_redis_client") as mock_redis:
@@ -62,32 +49,28 @@ def redis_client_mock():
 
 
 @pytest.fixture(scope="function")
-def db_session():
-    """
-    Create new database session.
+async def db_session():
+    """Create new database session.
+
     After test finish, close it.
     """
-    session = SessionLocal()
-    session.expire_on_commit = False
-    try:
+    async with AsyncSessionLocal() as session:
         yield session
-    finally:
-        session.rollback()
-        session.close()
+        await session.rollback()
 
 
 @pytest.fixture(scope="function")
 def unique_category_name():
-    """Genearate random category name to avoid unique problems"""
+    """Genearate random category name to avoid unique problems."""
     return f"SmokeTest-GPU-{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(scope="function")
 async def refresh_redis_client(monkeypatch):
-    """
-    Refresh redis client connection (for CI tests)
-     :param monkeypatch: Monkey patching fixture
-     :return: New redis client connection
+    """Refresh redis client connection (for CI tests).
+
+    :param monkeypatch: Monkey patching fixture
+    :return: New redis client connection
     """
     redis_manager.client = None
     redis_manager._loop = None
@@ -98,8 +81,8 @@ async def refresh_redis_client(monkeypatch):
 
 @pytest.fixture(scope="function")
 def mock_ansible_success(monkeypatch):
-    """
-    Mock ansible runner to always return success.
+    """Mock ansible runner to always return success.
+
     :param monkeypatch: Monkey patching fixture
     :return: Ansible runner mock
     """
@@ -114,29 +97,12 @@ def mock_ansible_success(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-async def service_header():
-    """
-    Generate service authorization header for tests.
+async def service_header(test_client):
+    """Generate service authorization header for tests.
+
     :return: Authorization header with service token
     """
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        res = await ac.post(
-            "/auth/login", data={"username": "Service", "password": "Service"}
-        )
-        token = res.json()["access_token"]
-        return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture(scope="function")
-def service_header_sync(test_client):
-    """
-    Generate service authorization header for synchronous tests.
-    :param test_client:
-    :return:
-    """
-    res = test_client.post(
+    res = await test_client.post(
         "/auth/login", data={"username": "Service", "password": "Service"}
     )
     token = res.json()["access_token"]
@@ -144,24 +110,24 @@ def service_header_sync(test_client):
 
 
 @pytest.fixture(scope="function")
-async def alpha_admin_header(test_client_async, service_header):
-    """
-    Generate alpha admin authorization header for tests.
+async def alpha_admin_header(test_client, service_header):
+    """Generate alpha admin authorization header for tests.
+
     :return: Authorization header with alpha admin token
     """
     admin_login = f"alpha_{uuid.uuid4().hex[:4]}"
-    team_res = await test_client_async.post(
+    team_res = await test_client.post(
         "/db/teams/",
         json={"name": "Team Alpha", "team_admin_id": 1},
         headers=service_header,
     )
     team_id = team_res.json()["id"]
 
-    user_res = await test_client_async.post(
+    user_res = await test_client.post(
         "/db/users/",
         json={
             "login": admin_login,
-            "email": "alpha@lab.pl",
+            "email": f"{admin_login}@lab.pl",
             "user_type": "group_admin",
             "team_id": team_id,
             "name": "Adam",
@@ -171,7 +137,7 @@ async def alpha_admin_header(test_client_async, service_header):
     )
 
     user_data = user_res.json()
-    login_res = await test_client_async.post(
+    login_res = await test_client.post(
         "/auth/login",
         data={"username": admin_login, "password": user_data["generated_password"]},
     )

@@ -38,14 +38,18 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
-import { AddPlatformDialog } from './platform-dialog'
+import { AddPlatformDialog } from './add-platform-dialog'
+import { AddTagDialog } from './add-tag-dialog'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from './ui/collapsible'
 import { Badge } from './ui/badge'
-import { useAuth } from '@/routes/auth' //
+import { AddRackDialog } from './add-rack-dialog'
+import { AddCategoriesDialog } from './add-categories-dialog'
+import { AddRoomsDialog } from './add-rooms-dialog'
+import { AddInventoryDialog } from './add-inventory-dialog'
 import {
   Sidebar,
   SidebarContent,
@@ -63,6 +67,7 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useAuth } from '@/routes/auth' //
 
 const items = [
   { title: 'Dashboard', url: '/user-dashboard', icon: PanelsTopLeft },
@@ -175,6 +180,9 @@ export function AppSidebar() {
                   <DropdownMenuCheckboxItem checked>
                     Add platform
                   </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked>
+                    Add tag
+                  </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem>
                     Add inventory item
                   </DropdownMenuCheckboxItem>
@@ -188,6 +196,11 @@ export function AppSidebar() {
           <SidebarContent>
             <SidebarMenuItem>
               <AddPlatformDialog />
+              <AddTagDialog />
+              <AddRackDialog />
+              <AddCategoriesDialog />
+              <AddRoomsDialog />
+              <AddInventoryDialog />
             </SidebarMenuItem>
           </SidebarContent>
         </SidebarGroup>

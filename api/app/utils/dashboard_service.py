@@ -1,22 +1,32 @@
-"""
-User dashboard items parser. Prepares json file with database data for user-dashboard page.
-"""
+"""User dashboard items parser. Prepares json file with database data for user-dashboard page."""
 
-from sqlalchemy.orm import Session
-from app.db.models import Machines, Rooms, Inventory, Teams, User, History
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.auth.dependencies import RequestContext
+from app.db.models import History, Inventory, Machines, Rooms, Teams
 
-# TO DO: add proper tags and handling
 
+async def build_dashboard(db: AsyncSession, ctx: RequestContext):
+    """Build user dashboard.
 
-def build_dashboard(db: Session, ctx: RequestContext):
+    :param db: Active database session
+    :param ctx: User request context containing user and team information
+    :return: User dashboard items
+    """
     ctx.require_user()
-    machines = ctx.team_filter(db.query(Machines), Machines).all()
-    rooms = ctx.team_filter(db.query(Rooms), Rooms).all()
-    inventories = ctx.team_filter(db.query(Inventory), Inventory).all()
-    teams = ctx.team_filter(db.query(Teams), Teams).all()
-    users = ctx.team_filter(db.query(User), User).all()
-    histories = ctx.team_filter(db.query(History), History).all()
+
+    machines_stmt = ctx.team_filter(select(Machines), Machines)
+    rooms_stmt = ctx.team_filter(select(Rooms), Rooms)
+    inventory_stmt = ctx.team_filter(select(Inventory), Inventory)
+    teams_stmt = ctx.team_filter(select(Teams), Teams)
+    history_stmt = ctx.team_filter(select(History), History)
+
+    machines = (await db.execute(machines_stmt)).scalars().all()
+    rooms = (await db.execute(rooms_stmt)).scalars().all()
+    inventories = (await db.execute(inventory_stmt)).scalars().all()
+    teams = (await db.execute(teams_stmt)).scalars().all()
+    histories = (await db.execute(history_stmt)).scalars().all()
 
     machine_items = [
         {
@@ -71,20 +81,6 @@ def build_dashboard(db: Session, ctx: RequestContext):
         for team in teams
     ]
 
-    user_items = [
-        {
-            "type": "User",
-            "id": user.name,
-            "location": f"/users/{user.id}",
-            "tags": (
-                [f"Team ID: {user.team_id}", f"User type: {user.user_type}"]
-                if user.team_id is not None
-                else []
-            ),
-        }
-        for user in users
-    ]
-
     history_items = [
         {
             "type": "History",
@@ -119,10 +115,6 @@ def build_dashboard(db: Session, ctx: RequestContext):
             {
                 "name": "Teams",
                 "items": team_items,
-            },
-            {
-                "name": "Users",
-                "items": user_items,
             },
             {
                 "name": "History",

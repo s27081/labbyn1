@@ -3,83 +3,89 @@
 from datetime import datetime
 from typing import List
 
-from app.database import get_db
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+
+from app.auth.dependencies import RequestContext
+from app.database import get_async_db
 from app.db.models import Inventory, Rentals, User, UsersTeams
 from app.db.schemas import (
     InventoryCreate,
+    InventoryDetailResponse,
     InventoryResponse,
     InventoryUpdate,
-    InventoryDetailResponse,
 )
-from app.utils.redis_service import acquire_lock
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
-from app.auth.dependencies import RequestContext
 from app.utils.database_service import resolve_target_team_id
+from app.utils.redis_service import acquire_lock
 
-router = APIRouter()
+router = APIRouter(prefix="/db", tags=["Inventory"])
 
 
 @router.post(
-    "/db/inventory/",
+    "/inventory/",
     response_model=InventoryResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Inventory"],
 )
-def create_item(
+async def create_item(
     inventory_data: InventoryCreate,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create and add new inventory to database
+    """Create and add new inventory to database.
+
     :param inventory_data: Inventory data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Inventory item
+    :return: Inventory item.
     """
     data = inventory_data.model_dump()
     data["team_id"] = resolve_target_team_id(ctx, data.get("team_id"))
 
-    obj = Inventory(**inventory_data.model_dump())
+    obj = Inventory(**data)
     db.add(obj)
-    db.commit()
-    db.refresh(obj)
+    await db.commit()
+    await db.refresh(obj, attribute_names=["category", "team"])
     return obj
 
 
-@router.get(
-    "/db/inventory/", response_model=List[InventoryResponse], tags=["Inventory"]
-)
-def get_inventory(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
-    """
-    Fetch all inventory items
-    :param db: Active database session
-    :param ctx: Request context for user and team info
-    :return: List of inventory items
-    """
-    ctx.require_user()
-    query = db.query(Inventory)
-    query = ctx.team_filter(query, Inventory)
-    return query.all()
-
-
-@router.get(
-    "/db/inventory/details",
-    response_model=List[InventoryDetailResponse],
-    tags=["Inventory"],
-)
-def get_inventory_details(
-    db: Session = Depends(get_db), ctx: RequestContext = Depends()
+@router.get("/inventory/", response_model=List[InventoryResponse])
+async def get_inventory(
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all inventory items with detailed information from related tables (team, room, machine, category).
+    """Fetch all inventory items.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of inventory items
+    :return: List of inventory items.
     """
     ctx.require_user()
-    query = db.query(Inventory).options(
+    stmt = select(Inventory)
+    stmt = ctx.team_filter(stmt, Inventory)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.get(
+    "/inventory/details",
+    response_model=List[InventoryDetailResponse],
+)
+async def get_inventory_details(
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
+):
+    """Fetch all inventory items with detailed information.
+
+    Related tables (team, room, machine, category).
+
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: List of inventory items.
+    """
+    ctx.require_user()
+    stmt = select(Inventory).options(
         joinedload(Inventory.team),
         joinedload(Inventory.room),
         joinedload(Inventory.machine),
@@ -90,8 +96,9 @@ def get_inventory_details(
         .joinedload(UsersTeams.team),
     )
 
-    query = ctx.team_filter(query, Inventory)
-    items = query.all()
+    stmt = ctx.team_filter(stmt, Inventory)
+    result = await db.execute(stmt)
+    items = result.unique().scalars().all()
     today = datetime.now().date()
 
     results = []
@@ -120,11 +127,14 @@ def get_inventory_details(
                 "name": item.name,
                 "total_quantity": item.quantity,
                 "in_stock_quantity": item.quantity - total_rented,
+                "team_id": item.team_id,
                 "team_name": item.team.name if item.team else "N/A",
                 "room_name": item.room.name if item.room else "N/A",
+                "room_id": item.room.id if item.room else 1,
                 "machine_info": item.machine.name if item.machine else "None",
+                "category_id": item.category_id,
                 "category_name": item.category.name if item.category else "N/A",
-                "location_link": f"room/{item.localization_id}",
+                "location_link": f"/labs/{item.localization_id}",
                 "active_rentals": active_rentals_list,
             }
         )
@@ -133,22 +143,21 @@ def get_inventory_details(
 
 
 @router.post(
-    "/db/inventory/bulk",
+    "/inventory/bulk",
     response_model=List[InventoryResponse],
     status_code=status.HTTP_201_CREATED,
-    tags=["Inventory"],
 )
-def bulk_create_items(
+async def bulk_create_items(
     items_data: List[InventoryCreate],
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Bulk import inventory items
+    """Bulk import inventory items.
+
     :param items_data: List of inventory item data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: Inventory items
     """
     ctx.require_group_admin()
 
@@ -159,31 +168,34 @@ def bulk_create_items(
         new_items.append(Inventory(**data))
 
     db.add_all(new_items)
-    db.commit()
+    await db.commit()
 
     for item in new_items:
-        db.refresh(item)
+        await db.refresh(item, attribute_names=["category", "team"])
 
     return new_items
 
 
 @router.get(
-    "/db/inventory/details/{item_id}",
+    "/inventory/details/{item_id}",
     response_model=InventoryDetailResponse,
-    tags=["Inventory"],
 )
-def get_inventory_item_details(
-    item_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+async def get_inventory_item_details(
+    item_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch all specific item with detailed information from related tables (team, room, machine, category).
+    """Fetch all specific item with detailed information.
+
+    Related tables (team, room, machine, category).
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of inventory items
+    :return: List of inventory items.
     """
     ctx.require_user()
-    query = (
-        db.query(Inventory)
+    stmt = (
+        select(Inventory)
         .filter(Inventory.id == item_id)
         .options(
             joinedload(Inventory.team),
@@ -197,8 +209,9 @@ def get_inventory_item_details(
         )
     )
 
-    query = ctx.team_filter(query, Inventory)
-    item = query.first()
+    stmt = ctx.team_filter(stmt, Inventory)
+    result = await db.execute(stmt)
+    item = result.unique().scalar_one_or_none()
 
     if not item:
         raise HTTPException(status_code=404, detail="Item not found or access denied")
@@ -228,32 +241,37 @@ def get_inventory_item_details(
         "name": item.name,
         "total_quantity": item.quantity,
         "in_stock_quantity": item.quantity - total_rented,
+        "team_id": item.team_id,
         "team_name": item.team.name if item.team else "N/A",
         "room_name": item.room.name if item.room else "N/A",
+        "room_id": item.room.id if item.room else 1,
         "machine_info": item.machine.name if item.machine else "None",
+        "category_id": item.category_id,
         "category_name": item.category.name if item.category else "N/A",
-        "location_link": f"room/{item.localization_id}",
+        "location_link": f"/labs/{item.localization_id}",
         "active_rentals": active_rentals_list,
     }
 
 
-@router.get(
-    "/db/inventory/{item_id}", response_model=InventoryResponse, tags=["Inventory"]
-)
-def get_inventory_item(
-    item_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+@router.get("/inventory/{item_id}", response_model=InventoryResponse)
+async def get_inventory_item(
+    item_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific inventory item by ID
+    """Fetch specific inventory item by ID.
+
     :param item_id: Item ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Inventory item
+    :return: Inventory item.
     """
     ctx.require_user()
-    query = db.query(Inventory).filter(Inventory.id == item_id)
-    query = ctx.team_filter(query, Inventory)
-    item = query.first()
+    stmt = select(Inventory).filter(Inventory.id == item_id)
+    stmt = ctx.team_filter(stmt, Inventory)
+    result = await db.execute(stmt)
+    item = result.scalar_one_or_none()
+
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -262,32 +280,33 @@ def get_inventory_item(
     return item
 
 
-@router.patch(
-    "/db/inventory/{item_id}", response_model=InventoryResponse, tags=["Inventory"]
-)
+@router.patch("/inventory/{item_id}", response_model=InventoryResponse)
 async def update_item(
     item_id: int,
     item_data: InventoryUpdate,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update item in inventory
+    """Update item in inventory.
+
     :param item_id: Item ID
     :param item_data: Item data schema
     :param db: Active database session
-    :return: Updated Inventory item
+    :return: Updated Inventory item.
     """
     ctx.require_user()
     async with acquire_lock(f"inventory_lock:{item_id}"):
-        query = db.query(Inventory).filter(Inventory.id == item_id)
-        query = ctx.team_filter(query, Inventory)
-        item = query.first()
+        stmt = select(Inventory).filter(Inventory.id == item_id)
+        stmt = ctx.team_filter(stmt, Inventory)
+        result = await db.execute(stmt)
+        item = result.scalar_one_or_none()
+
         if not item:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Item not found or access denied",
             )
+
         data = item_data.model_dump(exclude_unset=True)
         if "team_id" in data and not ctx.is_admin:
             if data["team_id"] not in ctx.team_ids:
@@ -295,36 +314,40 @@ async def update_item(
                     status_code=403, detail="Access to specified team is denied"
                 )
 
-        for k, v in item_data.model_dump(exclude_unset=True).items():
+        for k, v in data.items():
             setattr(item, k, v)
-        db.commit()
-        db.refresh(item)
+
+        await db.commit()
+        await db.refresh(item, attribute_names=["category", "team"])
         return item
 
 
 @router.delete(
-    "/db/inventory/{item_id}",
+    "/inventory/{item_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Inventory"],
 )
 async def delete_item(
-    item_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    item_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete item in inventory
+    """Delete item in inventory.
+
     :param item_id: Item ID
     :param db: Active database session
-    :return: None
+    :return: 204 No Content as success
     """
     ctx.require_user()
     async with acquire_lock(f"inventory_lock:{item_id}"):
-        query = db.query(Inventory).filter(Inventory.id == item_id)
-        query = ctx.team_filter(query, Inventory)
-        item = query.first()
+        stmt = select(Inventory).filter(Inventory.id == item_id)
+        stmt = ctx.team_filter(stmt, Inventory)
+        result = await db.execute(stmt)
+        item = result.scalar_one_or_none()
+
         if not item:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Item not found or access denied",
             )
-        db.delete(item)
-        db.commit()
+        await db.delete(item)
+        await db.commit()
