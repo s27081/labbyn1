@@ -60,7 +60,7 @@ async def create_room(
     return obj
 
 
-@router.get("/rooms/", response_model=List[RoomsResponse])
+@router.get("/rooms", response_model=List[RoomsResponse])
 async def get_rooms(
     db: AsyncSession = Depends(get_async_db),
     ctx: RequestContext = Depends(RequestContext.create),
