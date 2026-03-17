@@ -242,7 +242,9 @@ async def update_user(
 
         if not ctx.is_admin:
             if "user_type" in data and data["user_type"] == UserType.ADMIN:
-                raise HTTPException(403, detail="Insufficient permissions to assign ADMIN role")
+                raise HTTPException(
+                    403, detail="Insufficient permissions to assign ADMIN role"
+                )
             data.pop("team_ids", None)
 
         if "password" in data:
@@ -255,8 +257,7 @@ async def update_user(
             await db.execute(delete(UsersTeams).where(UsersTeams.user_id == user.id))
 
             new_memberships = [
-                UsersTeams(user_id=user.id, team_id=t_id)
-                for t_id in new_team_ids
+                UsersTeams(user_id=user.id, team_id=t_id) for t_id in new_team_ids
             ]
 
             db.add_all(new_memberships)

@@ -220,7 +220,6 @@ async def get_history_by_id(
     result = await db.execute(stmt)
     history = result.unique().scalar_one_or_none()
 
-
     if not history:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="History not found"
