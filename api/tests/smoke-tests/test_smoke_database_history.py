@@ -1,4 +1,5 @@
 """History tests to verify logging functionality."""
+
 import uuid
 
 import pytest
@@ -52,9 +53,7 @@ async def test_history_full_cycle_with_rollback(
         "team_ids": [team_ids],
     }
 
-    res = await test_client.post(
-        "/db/users", json=user_payload, headers=service_header
-    )
+    res = await test_client.post("/db/users", json=user_payload, headers=service_header)
     assert res.status_code == 201
     user_id = res.json()["id"]
 

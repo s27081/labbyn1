@@ -77,14 +77,11 @@ async def get_machines(
     :return: List of machines.
     """
     ctx.require_user()
-    stmt = (
-        select(Machines)
-        .options(
-            joinedload(Machines.cpus),
-            joinedload(Machines.disks),
-            joinedload(Machines.team),
-            joinedload(Machines.machine_metadata)
-        )
+    stmt = select(Machines).options(
+        joinedload(Machines.cpus),
+        joinedload(Machines.disks),
+        joinedload(Machines.team),
+        joinedload(Machines.machine_metadata),
     )
     stmt = ctx.team_filter(stmt, Machines)
     result = await db.execute(stmt)
@@ -111,7 +108,7 @@ async def get_machine_by_id(
             joinedload(Machines.cpus),
             joinedload(Machines.disks),
             joinedload(Machines.team),
-            joinedload(Machines.machine_metadata)
+            joinedload(Machines.machine_metadata),
         )
         .filter(Machines.id == machine_id)
     )
@@ -278,7 +275,9 @@ async def update_machine(
             )
 
         update_data = machine_data.model_dump(exclude_unset=True)
-        if "shelf_id" in update_data and (update_data["shelf_id"] == 0 or update_data["shelf_id"] == ""):
+        if "shelf_id" in update_data and (
+            update_data["shelf_id"] == 0 or update_data["shelf_id"] == ""
+        ):
             update_data["shelf_id"] = None
         if "team_id" in update_data and not ctx.is_admin:
             if update_data["team_id"] not in ctx.team_ids:
@@ -302,7 +301,9 @@ async def update_machine(
                     db.add(CPUs(name=cpu_item["name"], machine_id=machine_id))
                 else:
                     await db.execute(
-                        update(CPUs).where(CPUs.id == cpu_item["id"]).values(name=cpu_item["name"])
+                        update(CPUs)
+                        .where(CPUs.id == cpu_item["id"])
+                        .values(name=cpu_item["name"])
                     )
 
         if "disks" in update_data:
@@ -316,17 +317,18 @@ async def update_machine(
 
             for disk_item in updated_disks:
                 if not disk_item.get("id"):
-                    db.add(Disks(
-                        name=disk_item["name"],
-                        capacity=disk_item["capacity"],
-                        machine_id=machine_id
-                    ))
+                    db.add(
+                        Disks(
+                            name=disk_item["name"],
+                            capacity=disk_item["capacity"],
+                            machine_id=machine_id,
+                        )
+                    )
                 else:
                     await db.execute(
-                        update(Disks).where(Disks.id == disk_item["id"]).values(
-                            name=disk_item["name"],
-                            capacity=disk_item["capacity"]
-                        )
+                        update(Disks)
+                        .where(Disks.id == disk_item["id"])
+                        .values(name=disk_item["name"], capacity=disk_item["capacity"])
                     )
 
         for k, v in update_data.items():

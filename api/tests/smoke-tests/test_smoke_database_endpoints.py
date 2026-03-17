@@ -58,12 +58,12 @@ async def test_create_user_flow(test_client, service_header):
         "team_ids": [team_id],
     }
 
-    response = await ac.post("/db/users/", json=payload, headers=headers)
+    response = await ac.post("/db/users", json=payload, headers=headers)
     assert response.status_code == 201
     data = response.json()
     user_id = data["id"]
 
-    response_dup = await ac.post("/db/users/", json=payload, headers=headers)
+    response_dup = await ac.post("/db/users", json=payload, headers=headers)
     assert response_dup.status_code == 409
 
     get_res = await ac.get(f"/db/users/{user_id}", headers=headers)

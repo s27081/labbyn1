@@ -1,4 +1,5 @@
 """Verify basic database mechanics."""
+
 import uuid
 
 import pytest

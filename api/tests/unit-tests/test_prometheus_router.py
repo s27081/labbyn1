@@ -1,4 +1,5 @@
 """Test prometheus logic."""
+
 from unittest import mock
 
 import pytest

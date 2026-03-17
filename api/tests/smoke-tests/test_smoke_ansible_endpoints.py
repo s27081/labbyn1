@@ -1,4 +1,5 @@
 """Ansible tests verify ansible logic."""
+
 import json
 import os
 

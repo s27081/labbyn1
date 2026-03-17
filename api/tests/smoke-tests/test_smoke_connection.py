@@ -1,4 +1,5 @@
 """Deprecated"""
+
 import subprocess
 
 import pytest
