@@ -4,7 +4,6 @@ import json
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -19,6 +18,7 @@ from app.db.schemas import (
 )
 from app.utils.database_service import resolve_target_team_id
 from app.utils.redis_service import acquire_lock, get_cache
+from sqlalchemy import delete, select
 
 router = APIRouter(prefix="/db", tags=["Machines"])
 
@@ -207,12 +207,18 @@ async def get_machine_full_detail(
         "note": machine.note,
         "pdu_port": machine.pdu_port,
         "added_on": machine.added_on,
+        "team_id": machine.team_id,
         "team_name": machine.team.name if machine.team else "N/A",
+        "rack_id": (
+            machine.shelf.rack_id if (machine.shelf and machine.shelf.rack) else None
+        ),
         "rack_name": (
             machine.shelf.rack.name if (machine.shelf and machine.shelf.rack) else "N/A"
         ),
-        "shelf_number": machine.shelf.order if machine.shelf else "N/A",
+        "shelf_id": machine.shelf.id if machine.shelf else 0,
+        "shelf_number": machine.shelf.order if machine.shelf else 0,
         "room_name": machine.room.name if machine.room else "N/A",
+        "room_id": machine.room.id if machine.room else None,
         "last_update": machine.machine_metadata.last_update,
         "monitoring": machine.machine_metadata.agent_prometheus,
         "ansible_access": machine.machine_metadata.ansible_access,
@@ -262,20 +268,61 @@ async def update_machine(
                     detail="You don't have permission to assign this machine "
                     "to the specified team",
                 )
+
+        if "cpus" in update_data:
+            updated_cpus = update_data.pop("cpus")
+            updated_cpus_ids = [c.get("id") for c in updated_cpus if c.get("id")]
+
+            del_stmt = delete(CPUs).where(CPUs.machine_id == machine_id)
+            if updated_cpus_ids:
+                del_stmt = del_stmt.where(CPUs.id.not_in(updated_cpus_ids))
+            await db.execute(del_stmt)
+
+            for cpu_item in updated_cpus:
+                if not cpu_item.get("id"):
+                    db.add(CPUs(name=cpu_item["name"], machine_id=machine_id))
+                else:
+                    from sqlalchemy import update
+                    await db.execute(
+                        update(CPUs).where(CPUs.id == cpu_item["id"]).values(name=cpu_item["name"])
+                    )
+
+        if "disks" in update_data:
+            updated_disks = update_data.pop("disks")
+            updated_disks_ids = [d.get("id") for d in updated_disks if d.get("id")]
+
+            del_disk_stmt = delete(Disks).where(Disks.machine_id == machine_id)
+            if updated_disks_ids:
+                del_disk_stmt = del_disk_stmt.where(Disks.id.not_in(updated_disks_ids))
+            await db.execute(del_disk_stmt)
+
+            for disk_item in updated_disks:
+                if not disk_item.get("id"):
+                    db.add(Disks(
+                        name=disk_item["name"],
+                        capacity=disk_item["capacity"],
+                        machine_id=machine_id
+                    ))
+                else:
+                    await db.execute(
+                        update(Disks).where(Disks.id == disk_item["id"]).values(
+                            name=disk_item["name"],
+                            capacity=disk_item["capacity"]
+                        )
+                    )
+
         for k, v in update_data.items():
             setattr(machine, k, v)
 
-        await db.commit()
+        try:
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
         await db.refresh(
             machine,
-            attribute_names=[
-                "team",
-                "localization",
-                "metadata",
-                "shelf",
-                "cpus",
-                "disks",
-            ],
+            attribute_names=["team", "localization", "metadata", "shelf", "cpus", "disks"],
         )
         return machine
 

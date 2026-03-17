@@ -1,7 +1,9 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useSuspenseQuery } from '@tanstack/react-query'
+import { useForm } from '@tanstack/react-form'
 import { Box, Cpu, Info, Users } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { ApiRackDetailMachineItem } from '@/integrations/racks/racks.types'
 import type { TagItem } from '@/integrations/tags/tags.types'
@@ -10,10 +12,20 @@ import { DataTable } from '@/components/ui/data-table'
 import { DataTableColumnHeader } from '@/components/data-table/column-header'
 import { TagList } from '@/components/tag-list'
 import { teamsQueryOptions } from '@/integrations/teams/teams.query'
-import { InputChecklist } from '@/components/input-checklist'
 import { SubPageTemplate } from '@/components/subpage-template'
 import { DndTable } from '@/components/dnd/dnd-table'
 import { SubpageCard } from '@/components/subpage-card'
+import {
+  useDeletRackMutation,
+  useUpdateRackMutation,
+} from '@/integrations/racks/racks.mutation'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export const Route = createFileRoute('/_auth/racks/$racksId')({
   component: RacksDetailsPage,
@@ -21,15 +33,40 @@ export const Route = createFileRoute('/_auth/racks/$racksId')({
 
 function RacksDetailsPage() {
   const { racksId } = Route.useParams()
+  const router = useRouter()
+  const deleteRack = useDeletRackMutation(Number(racksId))
+  const updateRack = useUpdateRackMutation(Number(racksId))
   const { data: rack } = useSuspenseQuery(singleRackQueryOptions(racksId))
   const { data: teams } = useSuspenseQuery(teamsQueryOptions)
   const [isEditing, setIsEditing] = useState(false)
-  const [formData, setFormData] = useState({ ...rack })
   const navigate = useNavigate()
+
+  const form = useForm({
+    defaultValues: {
+      name: rack.name,
+      team_id: rack.team_id,
+      room_id: rack.room_id,
+      tags: rack.tags,
+      machines: rack.machines,
+    },
+    onSubmit: ({ value }) => {
+      updateRack.mutate(value, {
+        onSuccess: () => {
+          toast.success('Rack updated successfully')
+          setIsEditing(false)
+        },
+        onError: (error: Error) => {
+          toast.error('Operation failed', { description: error.message })
+        },
+      })
+      setIsEditing(false)
+    },
+  })
 
   // Api returns machines in 2D array, it helps determine machines on the same shelf
   // For table we don't need nested structure
   const flatMachines = rack.machines.flat()
+
   const columnsMachines: Array<ColumnDef<any>> = [
     {
       accessorKey: 'name',
@@ -57,30 +94,28 @@ function RacksDetailsPage() {
         title: rack.name,
         type: 'editable',
         isEditing: isEditing,
-        editValue: formData.name,
-        onEditChange: (val) => setFormData((prev) => ({ ...prev, name: val })),
-        onSave: () => {
-          // updateRack.mutate(formData, {
-          //  onSuccess: () => setIsEditing(false),
-          // })
-          setIsEditing(false)
+        editValue: form.state.values.name,
+        onEditChange: (val) => form.setFieldValue('name', val),
+        onSave: (e) => {
+          e.preventDefault()
+          form.handleSubmit()
         },
         onCancel: () => {
-          setFormData({ ...rack })
+          form.reset()
           setIsEditing(false)
         },
         onStartEdit: () => setIsEditing(true),
-        onDelete: () =>
-          // deleteRack.mutate({
-          //  onSuccess: () => {
-          //    toast.success('Rack deleted successfully')
-          //    router.history.back()
-          //  },
-          //  onError: (error: Error) => {
-          //    toast.error('Operation failed', { description: error.message })
-          //  },
-          // }),
-          setIsEditing(false),
+        onDelete: () => {
+          deleteRack.mutate(undefined, {
+            onSuccess: () => {
+              toast.success('Rack deleted successfully')
+              router.history.back()
+            },
+            onError: (error: Error) => {
+              toast.error('Operation failed', { description: error.message })
+            },
+          })
+        },
       }}
       content={
         <>
@@ -105,24 +140,50 @@ function RacksDetailsPage() {
                       </span>
                       {isEditing ? (
                         field.name === 'tags' ? (
-                          <TagList
-                            tags={fieldValue as Array<TagItem>}
-                            type="edit"
+                          <form.Field
+                            name="tags"
+                            children={() => (
+                              <TagList
+                                tags={fieldValue as Array<TagItem>}
+                                type="edit"
+                                entityType="rack"
+                                entityId={racksId}
+                              />
+                            )}
                           />
                         ) : (
-                          <InputChecklist
-                            items={teams}
-                            value={formData.team_name}
-                            onChange={(newTeamName: string) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                team_name: newTeamName,
-                              }))
-                            }
+                          <form.Field
+                            name="team_id"
+                            children={(formField) => (
+                              <Select
+                                value={formField.state.value.toString()}
+                                onValueChange={(value) => {
+                                  formField.handleChange(Number(value))
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select a team" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teams.map((team) => (
+                                    <SelectItem
+                                      key={team.id}
+                                      value={team.id.toString()}
+                                    >
+                                      {team.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
                           />
                         )
                       ) : field.name === 'tags' ? (
-                        <TagList tags={fieldValue as Array<TagItem>} />
+                        <TagList
+                          tags={fieldValue as Array<TagItem>}
+                          entityType="rack"
+                          entityId={racksId}
+                        />
                       ) : (
                         <span className="font-medium">
                           {fieldValue ? fieldValue.toString() : '—'}
@@ -143,16 +204,18 @@ function RacksDetailsPage() {
             content={
               <>
                 {isEditing ? (
-                  <DndTable
-                    dbItems={rack.machines}
-                    onReorder={(
-                      newMachines: Array<Array<ApiRackDetailMachineItem>>,
-                    ) => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        machines: newMachines,
-                      }))
-                    }}
+                  <form.Field
+                    name="machines"
+                    children={(field) => (
+                      <DndTable
+                        dbItems={rack.machines}
+                        onReorder={(
+                          newMachines: Array<Array<ApiRackDetailMachineItem>>,
+                        ) => {
+                          field.handleChange(newMachines)
+                        }}
+                      />
+                    )}
                   />
                 ) : (
                   <DataTable

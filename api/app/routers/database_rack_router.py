@@ -230,6 +230,9 @@ async def update_rack(
 
     update_dict = rack_data.model_dump(exclude_unset=True)
 
+    # TO DO: Handle ordering of machines
+    update_dict.pop("machines", None)
+
     if "tag_ids" in update_dict:
         tag_ids = update_dict.pop("tag_ids")
         if tag_ids is not None:

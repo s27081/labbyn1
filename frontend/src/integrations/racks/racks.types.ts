@@ -29,4 +29,21 @@ export interface ApiRacksListItem {
   name: string
 }
 
+export interface ApiUpdateRack {
+  name?: string
+  room_id?: number
+  team_id?: number
+  tag_ids?: Array<string>
+  machines?: Array<
+    Array<{
+      id: number
+      name: string
+      ip_address: string
+      mac_address: string
+      team_id: number
+      machine_url: string | null
+    }>
+  >
+}
+
 export type ApiRackListResponse = Array<ApiRackDetailItem>

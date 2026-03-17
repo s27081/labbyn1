@@ -74,7 +74,7 @@ export const columns: Array<ColumnDef<ApiInventoryInfoItem>> = [
       return (
         <div className="flex flex-col items-center justify-center text-center">
           <span className="font-medium">
-            {row.getValue('machine_info') || '-'}
+            {row.getValue('category_name') || '-'}
           </span>
         </div>
       )

@@ -88,7 +88,7 @@ class TagsResponse(TagsBase):
 class TagsAssignment(BaseModel):
     """Used for tag assignment to various entities like rooms, machines, etc."""
 
-    tag_id: int
+    tag_ids: List[int]
     entity_id: int
     entity_type: str
 
@@ -655,6 +655,7 @@ class UserUpdate(schemas.BaseUserUpdate):
 class CPUBase(BaseModel):
     """Base model for CPUs."""
 
+    id: int
     name: str
 
 
@@ -682,6 +683,7 @@ class CPUResponse(CPUBase):
 class DisksBase(BaseModel):
     """Base model for Disks."""
 
+    id: int
     name: str
     capacity: Optional[str]
 
@@ -760,16 +762,19 @@ class MachinesUpdate(BaseModel):
     """Schema for updating a Machine."""
 
     name: Optional[str] = Field(None, max_length=100)
-    localization_id: Optional[int] = None
+    room_id: Optional[int] = None
+    ip_address: Optional[str] = Field(None, max_length=16)
     mac_address: Optional[str] = Field(None, max_length=17)
     pdu_port: Optional[int] = None
     team_id: Optional[int] = None
     os: Optional[str] = Field(None, max_length=30)
     serial_number: Optional[str] = Field(None, max_length=50)
     note: Optional[str] = Field(None, max_length=500)
-    cpu: Optional[str] = Field(None, max_length=100)
+    cpus: Optional[List[CPUBase]] = Field(default=[], description="CPU specification")
     ram: Optional[str] = Field(None, max_length=100)
-    disk: Optional[str] = Field(None, max_length=100)
+    disks: Optional[List[DisksBase]] = Field(
+        default=[], description="Disk/Storage specification"
+    )
     shelf_id: Optional[int] = None
     metadata_id: Optional[int] = None
 
@@ -791,7 +796,6 @@ class MachineInRackResponse(BaseModel):
     Includes shelf information.
     """
 
-    id: int
     name: str
     ip_address: Optional[str]
     mac_address: Optional[str]
@@ -819,10 +823,14 @@ class MachineFullDetailResponse(BaseModel):
     pdu_port: Optional[int]
     added_on: datetime
 
+    team_id: Optional[int]
     team_name: str
+    rack_id: Optional[int]
     rack_name: Optional[str]
     room_name: str
+    room_id: int
     shelf_number: int
+    shelf_id: int
 
     last_update: Optional[date]
     monitoring: bool
@@ -956,10 +964,13 @@ class InventoryDetailResponse(BaseModel):
     name: str
     total_quantity: int
     in_stock_quantity: int
+    team_id: Optional[int]
     team_name: str
     room_name: str
+    room_id: Optional[int]
     machine_info: Optional[str]
     category_name: str
+    category_id: Optional[int]
     location_link: str
     active_rentals: List[RentalInfo] = []
 
@@ -1206,11 +1217,15 @@ class RackUpdate(BaseModel):
 
     name: Optional[str] = Field(None, max_length=100, description="Name of the rack")
     room_id: Optional[int] = Field(None, description="Location of the rack")
-    layout_id: Optional[int] = Field(
-        None, description="ID of the layout coordinates for this rack"
-    )
     team_id: Optional[int] = Field(
         None, description="ID of the team that owns this rack (if applicable)"
+    )
+    tag_ids: Optional[List[int]] = Field(
+        default=[], description="List of existing Tag IDs to associate with this rack"
+    )
+    machines: Optional[List[Any]] = Field(
+        default=[],
+        description="List of existing machines with associated shelf orders to place in the rack",
     )
 
 

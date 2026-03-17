@@ -23,7 +23,12 @@ interface DndTableProps {
 }
 
 export function DndTable({ dbItems, onReorder }: DndTableProps) {
-  const [items, setItems] = useState(dbItems)
+  const [shelves, setShelves] = useState(() =>
+    dbItems.map((machines, index) => ({
+      id: `shelf-${index}`,
+      machines,
+    })),
+  )
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -37,11 +42,11 @@ export function DndTable({ dbItems, onReorder }: DndTableProps) {
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={items.map((shelf) => shelf[0].id)}
+        items={shelves.map((shelf) => shelf.id)}
         strategy={verticalListSortingStrategy}
       >
-        {items.map((shelf) => (
-          <SortableItem items={shelf} id={shelf[0].id} key={shelf[0].id} />
+        {shelves.map((shelf) => (
+          <SortableItem items={shelf.machines} id={shelf.id} key={shelf.id} />
         ))}
       </SortableContext>
     </DndContext>
@@ -53,12 +58,12 @@ export function DndTable({ dbItems, onReorder }: DndTableProps) {
     if (!over || active.id === over.id) {
       return
     }
-    const oldIndex = items.findIndex((item) => item[0].id === active.id)
-    const newIndex = items.findIndex((item) => item[0].id === over.id)
+    const oldIndex = shelves.findIndex((shelf) => shelf.id === active.id)
+    const newIndex = shelves.findIndex((shelf) => shelf.id === over.id)
 
-    const result = arrayMove(items, oldIndex, newIndex)
-    setItems(result)
-    onReorder(result)
+    const result = arrayMove(shelves, oldIndex, newIndex)
+    setShelves(result)
+    onReorder(result.map((shelf) => shelf.machines))
 
     return result
   }

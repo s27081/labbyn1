@@ -111,7 +111,7 @@ class Shelf(Base):
     __tablename__ = "shelves"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False, unique=True)
+    name = Column(String(100), nullable=False)
     rack_id = Column(Integer, ForeignKey("racks.id"), nullable=False)
     order = Column(Integer, nullable=False)
 
