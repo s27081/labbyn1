@@ -100,7 +100,6 @@ async def test_rbac_permission_elevation_flow(
     u_id = int(rbac_data_suite["user_a_id"])
     t_id = int(rbac_data_suite["team_a_id"])
 
-
     await ac.patch(
         f"/db/users/{u_id}/promote",
         json={"team_id": t_id, "is_group_admin": True},

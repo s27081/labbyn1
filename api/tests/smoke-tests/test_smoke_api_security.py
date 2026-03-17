@@ -98,7 +98,9 @@ async def test_security_history_bola_leak(test_client, service_header, rbac_data
     history = response.json()
     b_log_id = history[0]["id"]
 
-    res = await ac.get(f"/db/history/{b_log_id}", headers=rbac_data_suite["user_a_header"])
+    res = await ac.get(
+        f"/db/history/{b_log_id}", headers=rbac_data_suite["user_a_header"]
+    )
 
     assert res.status_code in [403, 404]
 
