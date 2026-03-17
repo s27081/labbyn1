@@ -17,7 +17,7 @@ router = APIRouter(tags=["Search"])
 @router.get("/db/search", response_model=GroupedSearchResponse)
 async def get_search_data(
     ctx: RequestContext = Depends(RequestContext.create),
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Global search endpoint that aggregates data from multiple tables.
 
@@ -34,17 +34,16 @@ async def get_search_data(
     items_stmt = ctx.team_filter(select(Inventory), Inventory)
     rooms_stmt = ctx.team_filter(select(Rooms), Rooms)
 
-    (
-        users_res, teams_res, docs_res,
-        machines_res, racks_res, items_res, rooms_res
-    ) = await asyncio.gather(
-        db.execute(users_stmt),
-        db.execute(teams_stmt),
-        db.execute(docs_stmt),
-        db.execute(machines_stmt),
-        db.execute(racks_stmt),
-        db.execute(items_stmt),
-        db.execute(rooms_stmt),
+    (users_res, teams_res, docs_res, machines_res, racks_res, items_res, rooms_res) = (
+        await asyncio.gather(
+            db.execute(users_stmt),
+            db.execute(teams_stmt),
+            db.execute(docs_stmt),
+            db.execute(machines_stmt),
+            db.execute(racks_stmt),
+            db.execute(items_stmt),
+            db.execute(rooms_stmt),
+        )
     )
 
     users = users_res.scalars().all()
@@ -62,11 +61,11 @@ async def get_search_data(
                 "label": f"{u.name} {u.surname}",
                 "sublabel": u.email,
                 "target_url": f"/users/{u.id}",
-            } for u in users
+            }
+            for u in users
         ],
         "teams": [
-            {"id": t.id, "label": t.name, "target_url": f"/teams/{t.id}"}
-            for t in teams
+            {"id": t.id, "label": t.name, "target_url": f"/teams/{t.id}"} for t in teams
         ],
         "documentation": [
             {
@@ -74,7 +73,8 @@ async def get_search_data(
                 "label": d.title,
                 "sublabel": f"Autor: {d.author}",
                 "target_url": f"/documentation/{d.id}",
-            } for d in docs
+            }
+            for d in docs
         ],
         "machines": [
             {
@@ -82,11 +82,11 @@ async def get_search_data(
                 "label": m.name,
                 "sublabel": f"IP: {m.ip_address or '-'} | SN: {m.serial_number or '-'}",
                 "target_url": f"/machines/{m.id}",
-            } for m in machines
+            }
+            for m in machines
         ],
         "racks": [
-            {"id": r.id, "label": r.name, "target_url": f"/racks/{r.id}"}
-            for r in racks
+            {"id": r.id, "label": r.name, "target_url": f"/racks/{r.id}"} for r in racks
         ],
         "inventory": [
             {"id": i.id, "label": i.name, "target_url": f"/inventory/{i.id}"}
