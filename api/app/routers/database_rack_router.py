@@ -192,7 +192,19 @@ async def create_rack(
 
     db.add(db_rack)
     await db.commit()
-    await db.refresh(db_rack, attribute_names=["room", "team", "tags", "shelves"])
+
+    stmt = (
+        select(Rack)
+        .where(Rack.id == db_rack.id)
+        .options(
+            selectinload(Rack.room),
+            selectinload(Rack.team),
+            selectinload(Rack.tags),
+            selectinload(Rack.shelves).selectinload(Shelf.machines),
+        )
+    )
+    res = await db.execute(stmt)
+    db_rack = res.unique().scalar_one()
 
     db_rack.room_name = db_rack.room.name if db_rack.room else "N/A"
     db_rack.team_name = db_rack.team.name if db_rack.team else "N/A"
@@ -264,8 +276,18 @@ async def update_rack(
     for key, value in update_dict.items():
         setattr(db_rack, key, value)
 
-    await db.commit()
-    await db.refresh(db_rack, attribute_names=["room", "team", "tags", "shelves"])
+    final_stmt = (
+        select(Rack)
+        .where(Rack.id == rack_id)
+        .options(
+            selectinload(Rack.room),
+            selectinload(Rack.team),
+            selectinload(Rack.tags),
+            selectinload(Rack.shelves).selectinload(Shelf.machines),
+        )
+    )
+    result = await db.execute(final_stmt)
+    db_rack = result.unique().scalar_one()
 
     db_rack.room_name = db_rack.room.name if db_rack.room else "N/A"
     db_rack.team_name = db_rack.team.name if db_rack.team else "N/A"
