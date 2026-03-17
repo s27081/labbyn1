@@ -43,7 +43,7 @@ async def test_create_user_flow(test_client, service_header):
     headers = service_header
 
     team_name = unique_str("TestTeam")
-    team_res = await ac.post("/db/teams/", json={"name": team_name}, headers=headers)
+    team_res = await ac.post("/db/teams", json={"name": team_name}, headers=headers)
 
     assert team_res.status_code == 201
     team_id = team_res.json()["id"]
@@ -75,7 +75,7 @@ async def test_validation_error_handler(test_client, service_header):
     """Ensure Pydantic validation is working."""
     bad_payload = {"name": "Incomplete", "surname": "User"}
     response = await test_client.post(
-        "/db/users/", json=bad_payload, headers=service_header
+        "/db/users", json=bad_payload, headers=service_header
     )
     assert response.status_code == 422
 
@@ -110,7 +110,7 @@ async def test_resource_chain_creation(test_client, service_header, db_session):
     room_id = room_res.json()["id"]
 
     meta_res = await ac.post(
-        "/db/metadata/",
+        "/db/metadata",
         json={"agent_prometheus": True, "ansible_access": False},
         headers=headers,
     )

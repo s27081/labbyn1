@@ -42,7 +42,7 @@ async def test_rental_race_condition_async(test_client, db_session, service_head
     team_id = team_resp.json()["id"]
 
     cat_resp = await ac.post(
-        "/db/categories/", json={"name": unique_str("Cat")}, headers=headers
+        "/db/categories", json={"name": unique_str("Cat")}, headers=headers
     )
     cat_id = cat_resp.json()["id"]
 
