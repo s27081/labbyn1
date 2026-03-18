@@ -1253,7 +1253,7 @@ class RackWithOrderedMachinesResponse(RackBase):
     link: str
 
 # ==========================
-#       ANSIBLE
+#  ANSIBLE & NODE EXPORTER
 # ==========================
 
 class HostRequest(BaseModel):
@@ -1279,3 +1279,9 @@ class DiscoveryRequest(BaseModel):
     hosts: List[str]
     target_team_id: Optional[int] = None
     extra_vars: Optional[dict] = {}
+
+class PrometheusTarget(BaseModel):
+    """Pydantic model for Prometheus target."""
+
+    instance: str
+    labels: dict
