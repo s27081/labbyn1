@@ -7,8 +7,9 @@ from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
 from dotenv import load_dotenv
-from fastapi import HTTPException, status
 from redis import RedisError
+
+from app.core.exceptions import ConflictError, ExternalServiceError
 
 logger = logging.getLogger(__name__)
 load_dotenv(".env/api.env")
@@ -112,16 +113,17 @@ async def acquire_lock(
     try:
         is_locked = await lock.acquire(blocking=True)
         if not is_locked:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Enitity is locked (being used by another user), wait a little.",
+            raise ConflictError(
+                f"Resource '{lock_name.replace("lock:", "").replace(":", "")}' "
+                f"is currently locked by another user. "
+                f"Please try again in a moment."
             )
         yield
 
     except RedisError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Redis service failed.",
+        raise ExternalServiceError(
+            service="Redis",
+            detail="Distributed lock system failure."
         ) from e
 
     finally:
@@ -129,7 +131,4 @@ async def acquire_lock(
             try:
                 await lock.release()
             except RedisError as e:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Redis service failed.",
-                ) from e
+                logger.error(f"Failed to release redis lock '{lock_name}': {e}")
