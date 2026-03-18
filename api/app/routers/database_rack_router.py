@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.auth.dependencies import RequestContext
-from app.core.exceptions import AccessDeniedError, ObjectNotFoundError, ValidationError
+from app.core.exceptions import AccessDeniedError, ObjectNotFoundError, ValidationError, AppBaseException, ConflictError
 from app.database import get_async_db
 from app.db.models import Machines, Rack, Rooms, Shelf, Tags
 from app.db.schemas import (
@@ -17,6 +17,7 @@ from app.db.schemas import (
     RackUpdate,
     RackWithOrderedMachinesResponse,
 )
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(prefix="/db", tags=["Racks"])
 
@@ -173,8 +174,9 @@ async def create_rack(
     room = (
         await db.execute(select(Rooms).where(Rooms.id == rack.room_id))
     ).scalar_one_or_none()
+
     if not room:
-        raise ObjectNotFoundError("Target room")
+        raise ObjectNotFoundError("Room")
 
     if room.team_id != target_team_id and not ctx.is_admin:
         raise AccessDeniedError(f"Room '{room.name}' belongs to another team")
@@ -194,23 +196,34 @@ async def create_rack(
         db.add(db_rack)
         await db.commit()
 
-        stmt = (
-            select(Rack)
-            .where(Rack.id == db_rack.id)
-            .options(
-                selectinload(Rack.room),
-                selectinload(Rack.team),
-                selectinload(Rack.tags),
-            )
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            message=f"Rack with name '{rack.name}' already exists in this room/team."
         )
-        db_rack = (await db.execute(stmt)).unique().scalar_one()
-        db_rack.room_name = db_rack.room.name if db_rack.room else "N/A"
-        db_rack.team_name = db_rack.team.name if db_rack.team else "N/A"
-
-        return db_rack
     except Exception as e:
         await db.rollback()
-        raise ValidationError(f"Failed to create rack '{rack.name}'") from e
+        if isinstance(e, AppBaseException):
+            raise e
+        raise e
+
+    stmt = (
+        select(Rack)
+        .where(Rack.id == db_rack.id)
+        .options(
+            selectinload(Rack.room),
+            selectinload(Rack.team),
+            selectinload(Rack.tags),
+            selectinload(Rack.shelves)
+        )
+    )
+    result = await db.execute(stmt)
+    db_rack = result.unique().scalar_one()
+
+    db_rack.room_name = db_rack.room.name if db_rack.room else "N/A"
+    db_rack.team_name = db_rack.team.name if db_rack.team else "N/A"
+
+    return db_rack
 
 
 @router.patch("/racks/{rack_id}", response_model=RackResponse)
