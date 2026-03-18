@@ -4,50 +4,21 @@ Creating Ansible user, gathering platform information and deploying Node Exporte
 """
 
 from datetime import datetime
-from enum import Enum
-from typing import List, Optional
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import RequestContext
 from app.database import get_async_db
 from app.db.models import CPUs, Disks, Machines, Metadata, Rooms
+from app.db.schemas import AnsiblePlaybook, DiscoveryRequest, HostRequest
 from app.utils.ansible_service import parse_platform_report, run_playbook_task
 from app.utils.redis_service import acquire_lock
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["Ansible"])
 
 REPORTS_DIR = "./platform_reports"
 PLAYBOOK_DIR = "/code/ansible"
-
-
-class HostRequest(BaseModel):
-    """Pydantic model for a host input."""
-
-    host: str | list
-    extra_vars: dict
-
-
-class AnsiblePlaybook(str, Enum):
-    """Pydantic model for Ansible playbook execution request."""
-
-    create_user = "create_user"
-    scan_platform = "scan_platform"
-    deploy_agent = "deploy_agent"
-    delete_agent = "delete_agent"
-    delete_ansible = "delete_ansible"
-
-
-class DiscoveryRequest(BaseModel):
-    """List of hosts to scan (IP or Hostname)."""
-
-    hosts: List[str]
-    target_team_id: Optional[int] = None
-    extra_vars: Optional[dict] = {}
-
 
 PLAYBOOK_MAP = {
     AnsiblePlaybook.create_user: f"{PLAYBOOK_DIR}/create_ansible_user.yaml",
