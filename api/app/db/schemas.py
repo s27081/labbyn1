@@ -1252,6 +1252,7 @@ class RackWithOrderedMachinesResponse(RackBase):
     machines: List[List[MachineInRackResponse]] = [[]]
     link: str
 
+
 # ==========================
 #  ANSIBLE & NODE EXPORTER
 # ==========================
@@ -1285,3 +1286,27 @@ class PrometheusTarget(BaseModel):
 
     instance: str
     labels: dict
+
+
+# ==========================
+#      Search Bar
+# ==========================
+class SearchItem(BaseModel):
+    id: int
+    label: str
+    sublabel: Optional[str] = None
+    target_url: str
+
+    class Config:
+        from_attributes = True
+
+
+class GroupedSearchResponse(BaseModel):
+    machines: List[SearchItem] = []
+    users: List[SearchItem] = []
+    racks: List[SearchItem] = []
+    teams: List[SearchItem] = []
+    rooms: List[SearchItem] = []
+    inventory: List[SearchItem] = []
+    documentation: List[SearchItem] = []
+
