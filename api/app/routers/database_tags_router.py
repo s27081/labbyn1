@@ -2,11 +2,15 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import (
+    ObjectNotFoundError,
+    ValidationError,
+)
 from app.database import get_async_db
 from app.db.models import Documentation, Machines, Rack, Rooms, Tags
 from app.db.schemas import TagsAssignment, TagsCreate, TagsResponse, TagsUpdate
@@ -60,7 +64,7 @@ async def assign_tag(
 
     model = ENTITY_MAP.get(data.entity_type.lower())
     if not model:
-        raise HTTPException(status_code=400, detail="Invalid entity type")
+        raise ValidationError(f"Invalid entity type: {data.entity_type}")
 
     async with acquire_lock(f"tag_assign_{data.entity_type}:{data.entity_id}"):
         stmt = select(model).filter(model.id == data.entity_id)
@@ -78,21 +82,27 @@ async def assign_tag(
         tags_to_add = tag_res.scalars().all()
 
         if not tags_to_add:
-            raise HTTPException(status_code=404, detail="No valid tags found")
+            raise ObjectNotFoundError("Tags", name=f"IDs: {data.tag_ids}")
 
         await db.refresh(entity, ["tags"])
+        entity_name = getattr(entity, "name", str(entity.id))
+        new_tags_names = []
 
         changed = False
         for tag in tags_to_add:
             if tag not in entity.tags:
                 entity.tags.append(tag)
+                new_tags_names.append(tag.name)
                 changed = True
 
         if changed:
             await db.commit()
-            return {"message": f"Tags assigned successfully to {data.entity_type}"}
+            return {
+                "message": f"Assigned tags [{', '.join(new_tags_names)}] "
+                           f"to {data.entity_type} '{entity_name}'"
+            }
 
-        return {"message": "Tags were already assigned"}
+        return {"message": f"Tags already assigned to '{entity_name}'"}
 
 
 @router.post("/tags/detach", status_code=status.HTTP_200_OK)
@@ -113,36 +123,41 @@ async def detach_tag(
 
     model = ENTITY_MAP.get(data.entity_type.lower())
     if not model:
-        raise HTTPException(status_code=400, detail="Invalid entity type")
+        raise ValidationError(f"Invalid entity type: {data.entity_type}")
 
     async with acquire_lock(f"tag_assign_{data.entity_type}:{data.entity_id}"):
         stmt = select(model).filter(model.id == data.entity_id)
-        result = await db.execute(stmt)
-        entity = result.scalar_one_or_none()
+        if data.entity_type.lower() != "documentation":
+            stmt = ctx.team_filter(stmt, model)
+
+        entity = (await db.execute(stmt)).scalar_one_or_none()
 
         if not entity:
-            raise HTTPException(status_code=404, detail="Entity not found")
+            raise ObjectNotFoundError(data.entity_type.capitalize(), id=data.entity_id)
 
         if not data.tag_ids:
-            raise HTTPException(status_code=400, detail="No tag IDs provided")
+            raise ValidationError("No tag IDs provided for detachment")
 
         target_tag_id = data.tag_ids[0]
+        tag = (
+            await db.execute(select(Tags).filter(Tags.id == target_tag_id))
+        ).scalar_one_or_none()
 
-        tag_stmt = select(Tags).filter(Tags.id == target_tag_id)
-        tag_res = await db.execute(tag_stmt)
-        tag = tag_res.scalar_one_or_none()
+        if not tag:
+            raise ObjectNotFoundError("Tag", id=target_tag_id)
 
-        if tag:
-            await db.refresh(entity, ["tags"])
+        await db.refresh(entity, ["tags"])
+        entity_name = getattr(entity, "name", str(entity.id))
 
-            if tag in entity.tags:
-                entity.tags.remove(tag)
-                await db.commit()
+        if tag in entity.tags:
+            entity.tags.remove(tag)
+            await db.commit()
+            return {
+                "message": f"Tag '{tag.name}' detached from "
+                           f"{data.entity_type} '{entity_name}'"
+            }
 
-        return {
-            "message": f"Tag {tag.name if tag else 'Unknown'} "
-            f"detached from {data.entity_type}"
-        }
+        return {"message": f"Tag '{tag.name}' was not assigned to '{entity_name}'"}
 
 
 @router.post(
@@ -163,12 +178,16 @@ async def create_tag(
     :return: New tag item.
     """
     ctx.require_group_admin()
-    obj = Tags(**tag_data.model_dump())
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj)
 
-    return obj
+    try:
+        obj = Tags(**tag_data.model_dump())
+        db.add(obj)
+        await db.commit()
+        await db.refresh(obj)
+        return obj
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(f"Failed to create tag '{tag_data.name}'") from e
 
 
 @router.get(
@@ -193,9 +212,8 @@ async def get_tag_by_id(
     tag = result.scalar_one_or_none()
 
     if not tag:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
-        )
+        raise ObjectNotFoundError("Tag")
+
     return tag
 
 
@@ -224,17 +242,19 @@ async def update_tag(
         tag = result.scalar_one_or_none()
 
         if not tag:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
-            )
+            raise ObjectNotFoundError("Tag")
 
-        update_data = tag_data.model_dump(exclude_unset=True)
-        for k, v in update_data.items():
-            setattr(tag, k, v)
+        try:
+            update_data = tag_data.model_dump(exclude_unset=True)
+            for k, v in update_data.items():
+                setattr(tag, k, v)
 
-        await db.commit()
-        await db.refresh(tag)
-        return tag
+            await db.commit()
+            await db.refresh(tag)
+            return tag
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Failed to update tag '{tag.name}'") from e
 
 
 @router.delete(
@@ -260,9 +280,13 @@ async def delete_tag(
         tag = result.scalar_one_or_none()
 
         if not tag:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
-            )
+            raise ObjectNotFoundError("Tag")
 
-        await db.delete(tag)
-        await db.commit()
+        try:
+            tag_name = tag.name
+            await db.delete(tag)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Could not delete tag '{tag_name}'") from e

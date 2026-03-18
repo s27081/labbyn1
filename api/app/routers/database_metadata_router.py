@@ -2,11 +2,16 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import (
+    ObjectNotFoundError,
+    ValidationError,
+)
 from app.database import get_async_db
 from app.db.models import Machines, Metadata
 from app.db.schemas import MetadataCreate, MetadataResponse, MetadataUpdate
@@ -33,11 +38,15 @@ async def create_metadata(
     :return: Metadata object.
     """
     ctx.require_user()
-    obj = Metadata(**meta_data.model_dump())
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj)
-    return obj
+    try:
+        obj = Metadata(**meta_data.model_dump())
+        db.add(obj)
+        await db.commit()
+        await db.refresh(obj)
+        return obj
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError("Failed to create metadata record") from e
 
 
 @router.get("/metadata", response_model=List[MetadataResponse])
@@ -52,11 +61,9 @@ async def get_all_metadata(
     :return: List of Metadata.
     """
     ctx.require_user()
-    stmt = select(Metadata)
-    if not ctx.is_admin:
-        stmt = stmt.join(Machines).filter(Machines.team_id.in_(ctx.team_ids))
+    stmt = select(Metadata).join(Machines)
+    result = await db.execute(ctx.team_filter(stmt, Machines))
 
-    result = await db.execute(stmt)
     return result.scalars().all()
 
 
@@ -74,18 +81,11 @@ async def get_metadata(
     :return: Metadata object.
     """
     ctx.require_user()
-    stmt = select(Metadata).filter(Metadata.id == meta_id)
-    if not ctx.is_admin:
-        stmt = stmt.join(Machines).filter(Machines.team_id.in_(ctx.team_ids))
-
-    result = await db.execute(stmt)
-    obj = result.scalar_one_or_none()
+    stmt = select(Metadata).filter(Metadata.id == meta_id).join(Machines)
+    obj = (await db.execute(ctx.team_filter(stmt, Machines))).scalar_one_or_none()
 
     if not obj:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Metadata not found or access denied",
-        )
+        raise ObjectNotFoundError("Metadata")
     return obj
 
 
@@ -106,25 +106,29 @@ async def update_metadata(
     """
     ctx.require_user()
     async with acquire_lock(f"meta_lock:{meta_id}"):
-        stmt = select(Metadata).filter(Metadata.id == meta_id)
-        if not ctx.is_admin:
-            stmt = stmt.join(Machines).filter(Machines.team_id.in_(ctx.team_ids))
-
-        result = await db.execute(stmt)
-        obj = result.scalar_one_or_none()
-
+        stmt = (
+            select(Metadata)
+            .filter(Metadata.id == meta_id)
+            .join(Machines)
+            .options(selectinload(Metadata.machines))
+        )
+        obj = (await db.execute(ctx.team_filter(stmt, Machines))).scalar_one_or_none()
         if not obj:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Metadata not found or access denied",
-            )
+            raise ObjectNotFoundError("Metadata")
 
-        for k, v in data.model_dump(exclude_unset=True).items():
-            setattr(obj, k, v)
+        m_name = obj.machines[0].name if obj.machines else f"ID {meta_id}"
 
-        await db.commit()
-        await db.refresh(obj)
-        return obj
+        try:
+            for k, v in data.model_dump(exclude_unset=True).items():
+                setattr(obj, k, v)
+
+            await db.commit()
+            return obj
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Failed to update metadata for machine '{m_name}'"
+            ) from e
 
 
 @router.delete("/metadata/{meta_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -142,17 +146,26 @@ async def delete_metadata(
     """
     ctx.require_user()
     async with acquire_lock(f"meta_lock:{meta_id}"):
-        stmt = select(Metadata).filter(Metadata.id == meta_id)
-        if not ctx.is_admin:
-            stmt = stmt.join(Machines).filter(Machines.team_id.in_(ctx.team_ids))
+        stmt = (
+            select(Metadata)
+            .filter(Metadata.id == meta_id)
+            .join(Machines)
+            .options(selectinload(Metadata.machines))
+        )
 
-        result = await db.execute(stmt)
-        obj = result.scalar_one_or_none()
+        obj = (await db.execute(ctx.team_filter(stmt, Machines))).scalar_one_or_none()
 
         if not obj:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Metadata not found or access denied",
-            )
-        await db.delete(obj)
-        await db.commit()
+            raise ObjectNotFoundError("Metadata")
+
+        m_name = obj.machines[0].name if obj.machines else f"ID {meta_id}"
+
+        try:
+            await db.delete(obj)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Could not delete metadata for machine '{m_name}'"
+            ) from e

@@ -2,12 +2,13 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import AccessDeniedError, ObjectNotFoundError, ValidationError
 from app.database import get_async_db
 from app.db.models import Machines, Rack, Rooms, Shelf, Tags
 from app.db.schemas import (
@@ -16,7 +17,6 @@ from app.db.schemas import (
     RackUpdate,
     RackWithOrderedMachinesResponse,
 )
-from app.utils.database_service import resolve_target_team_id
 
 router = APIRouter(prefix="/db", tags=["Racks"])
 
@@ -135,10 +135,7 @@ async def get_rack_detail(
     rack = result.unique().scalar_one_or_none()
 
     if not rack:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Rack not found or access denied",
-        )
+        raise ObjectNotFoundError("Rack")
 
     rack.room_name = rack.room.name if rack.room else "N/A"
     rack.team_name = rack.team.name if rack.team else "N/A"
@@ -164,52 +161,56 @@ async def create_rack(
     :return: Created rack object with names.
     """
     ctx.require_user()
-    effective_team_id = resolve_target_team_id(ctx, rack.team_id)
 
-    room_stmt = select(Rooms).where(Rooms.id == rack.room_id)
-    room_res = await db.execute(room_stmt)
-    room = room_res.scalar_one_or_none()
+    target_team_id = rack.team_id or (
+        ctx.team_ids[0] if len(ctx.team_ids) == 1 else None
+    )
+    if not target_team_id:
+        raise ValidationError("Target team ID is required")
 
+    await ctx.validate_team_access(target_team_id)
+
+    room = (
+        await db.execute(select(Rooms).where(Rooms.id == rack.room_id))
+    ).scalar_one_or_none()
     if not room:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise ObjectNotFoundError("Target room")
 
-    if not ctx.is_admin and room.team_id not in ctx.team_ids:
-        raise HTTPException(
-            status_code=403, detail="Cannot assign rack to a room owned by another team"
+    if room.team_id != target_team_id and not ctx.is_admin:
+        raise AccessDeniedError(f"Room '{room.name}' belongs to another team")
+
+    try:
+        db_rack = Rack(
+            name=rack.name,
+            room_id=rack.room_id,
+            layout_id=rack.layout_id,
+            team_id=target_team_id,
         )
 
-    db_rack = Rack(
-        name=rack.name,
-        room_id=rack.room_id,
-        layout_id=rack.layout_id,
-        team_id=effective_team_id,
-    )
+        if rack.tag_ids:
+            tag_res = await db.execute(select(Tags).where(Tags.id.in_(rack.tag_ids)))
+            db_rack.tags = list(tag_res.scalars().all())
 
-    if rack.tag_ids:
-        tag_stmt = select(Tags).where(Tags.id.in_(rack.tag_ids))
-        tag_res = await db.execute(tag_stmt)
-        db_rack.tags = tag_res.scalars().all()
+        db.add(db_rack)
+        await db.commit()
 
-    db.add(db_rack)
-    await db.commit()
-
-    stmt = (
-        select(Rack)
-        .where(Rack.id == db_rack.id)
-        .options(
-            selectinload(Rack.room),
-            selectinload(Rack.team),
-            selectinload(Rack.tags),
-            selectinload(Rack.shelves).selectinload(Shelf.machines),
+        stmt = (
+            select(Rack)
+            .where(Rack.id == db_rack.id)
+            .options(
+                selectinload(Rack.room),
+                selectinload(Rack.team),
+                selectinload(Rack.tags),
+            )
         )
-    )
-    res = await db.execute(stmt)
-    db_rack = res.unique().scalar_one()
+        db_rack = (await db.execute(stmt)).unique().scalar_one()
+        db_rack.room_name = db_rack.room.name if db_rack.room else "N/A"
+        db_rack.team_name = db_rack.team.name if db_rack.team else "N/A"
 
-    db_rack.room_name = db_rack.room.name if db_rack.room else "N/A"
-    db_rack.team_name = db_rack.team.name if db_rack.team else "N/A"
-
-    return db_rack
+        return db_rack
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(f"Failed to create rack '{rack.name}'") from e
 
 
 @router.patch("/racks/{rack_id}", response_model=RackResponse)
@@ -235,64 +236,59 @@ async def update_rack(
     db_rack = result.scalar_one_or_none()
 
     if not db_rack:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Rack not found or access denied",
-        )
+        raise ObjectNotFoundError("Rack")
 
     update_dict = rack_data.model_dump(exclude_unset=True)
 
     # TO DO: Handle ordering of machines
     update_dict.pop("machines", None)
+    try:
+        if "tag_ids" in update_dict:
+            tag_ids = update_dict.pop("tag_ids")
+            if tag_ids is not None:
+                tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
+                tag_res = await db.execute(tag_stmt)
+                db_rack.tags = tag_res.scalars().all()
 
-    if "tag_ids" in update_dict:
-        tag_ids = update_dict.pop("tag_ids")
-        if tag_ids is not None:
-            tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
-            tag_res = await db.execute(tag_stmt)
-            db_rack.tags = tag_res.scalars().all()
+        if "team_id" in update_dict:
+            await ctx.validate_team_access(update_dict["team_id"])
 
-    if "team_id" in update_dict:
-        if not ctx.is_admin and update_dict["team_id"] not in ctx.team_ids:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Cannot reassign rack to another team",
+        if "room_id" in update_dict:
+            new_room_id = update_dict["room_id"]
+            room_stmt = select(Rooms).where(Rooms.id == new_room_id)
+            room_res = await db.execute(room_stmt)
+            room = room_res.scalar_one_or_none()
+            if not room:
+                raise ObjectNotFoundError("New room")
+
+            if not ctx.is_admin and room.team_id not in ctx.team_ids:
+                raise AccessDeniedError(f"Room '{room.name}' is owned by another team")
+
+        for key, value in update_dict.items():
+            setattr(db_rack, key, value)
+
+        final_stmt = (
+            select(Rack)
+            .where(Rack.id == rack_id)
+            .options(
+                selectinload(Rack.room),
+                selectinload(Rack.team),
+                selectinload(Rack.tags),
+                selectinload(Rack.shelves).selectinload(Shelf.machines),
             )
-
-    if "room_id" in update_dict:
-        new_room_id = update_dict["room_id"]
-        room_stmt = select(Rooms).where(Rooms.id == new_room_id)
-        room_res = await db.execute(room_stmt)
-        room = room_res.scalar_one_or_none()
-        if not room:
-            raise HTTPException(status_code=404, detail="New room not found")
-
-        if not ctx.is_admin and room.team_id not in ctx.team_ids:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Room is owned by another team",
-            )
-
-    for key, value in update_dict.items():
-        setattr(db_rack, key, value)
-
-    final_stmt = (
-        select(Rack)
-        .where(Rack.id == rack_id)
-        .options(
-            selectinload(Rack.room),
-            selectinload(Rack.team),
-            selectinload(Rack.tags),
-            selectinload(Rack.shelves).selectinload(Shelf.machines),
         )
-    )
-    result = await db.execute(final_stmt)
-    db_rack = result.unique().scalar_one()
+        result = await db.execute(final_stmt)
+        db_rack = result.unique().scalar_one()
 
-    db_rack.room_name = db_rack.room.name if db_rack.room else "N/A"
-    db_rack.team_name = db_rack.team.name if db_rack.team else "N/A"
+        db_rack.room_name = db_rack.room.name if db_rack.room else "N/A"
+        db_rack.team_name = db_rack.team.name if db_rack.team else "N/A"
 
-    return db_rack
+        return db_rack
+    except Exception as e:
+        await db.rollback()
+        if isinstance(e, (ObjectNotFoundError, AccessDeniedError)):
+            raise e
+        raise ValidationError(f"Failed to update rack '{db_rack.name}'") from e
 
 
 @router.delete("/racks/{rack_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -316,36 +312,39 @@ async def delete_rack(
     db_rack = result.unique().scalar_one_or_none()
 
     if not db_rack:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Rack not found or you don't have permission to delete it",
-        )
+        raise ObjectNotFoundError("Rack")
+    try:
+        virtual_room = (
+            await db.execute(
+                select(Rooms).where(
+                    Rooms.team_id == db_rack.team_id, Rooms.room_type == "virtual"
+                )
+            )
+        ).scalar_one_or_none()
 
-    v_room_stmt = select(Rooms).where(
-        Rooms.team_id == db_rack.team_id, Rooms.room_type == "virtual"
-    )
-    v_room_res = await db.execute(v_room_stmt)
-    virtual_room = v_room_res.scalar_one_or_none()
+        if not virtual_room:
+            team_name = db_rack.team.name if db_rack.team else "N/A"
+            raise ValidationError(f"Virtual lab not found for team '{team_name}'")
 
-    if not virtual_room:
-        raise HTTPException(
-            status_code=500, detail="Virtual lab not found for this team"
-        )
+        shelf_ids = [shelf.id for shelf in db_rack.shelves]
 
-    shelf_ids = [shelf.id for shelf in db_rack.shelves]
+        if shelf_ids:
+            m_stmt = select(Machines).where(Machines.shelf_id.in_(shelf_ids))
+            m_res = await db.execute(m_stmt)
+            machines_to_move = m_res.scalars().all()
 
-    if shelf_ids:
-        m_stmt = select(Machines).where(Machines.shelf_id.in_(shelf_ids))
-        m_res = await db.execute(m_stmt)
-        machines_to_move = m_res.scalars().all()
+            for machine in machines_to_move:
+                machine.shelf_id = None
+                machine.localization_id = virtual_room.id
 
-        for machine in machines_to_move:
-            machine.shelf_id = None
-            machine.localization_id = virtual_room.id
-
-    await db.delete(db_rack)
-    await db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+        await db.delete(db_rack)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception as e:
+        await db.rollback()
+        if isinstance(e, ValidationError):
+            raise e
+        raise ValidationError(f"Could not delete rack '{db_rack.name}'") from e
 
 
 @router.get(
@@ -381,6 +380,6 @@ async def get_rack_info_by_id(
     rack = result.unique().scalar_one_or_none()
 
     if not rack:
-        raise HTTPException(status_code=404, detail="Rack not found")
+        raise ObjectNotFoundError("Rack")
 
     return format_rack_output(rack)

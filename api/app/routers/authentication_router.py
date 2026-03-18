@@ -1,10 +1,11 @@
 """Router for authentication non-default methods."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.auth_config import fastapi_users
+from app.core.exceptions import ObjectNotFoundError, ValidationError
 from app.database import get_async_db
 from app.db.models import User
 from app.db.schemas import FirstChangePasswordRequest
@@ -32,20 +33,14 @@ async def setup_first_password(
     :return: Success or error message
     """
     if not user.force_password_change:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password change not required.",
-        )
+        raise ValidationError("Password change is not required for this account.")
 
     stmt = select(User).where(User.id == user.id)
     result = await db.execute(stmt)
     db_user = result.scalar_one_or_none()
 
     if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found.",
-        )
+        raise ObjectNotFoundError("User", user.login)
 
     db_user.hashed_password = hash_password(data.new_password)
     db_user.force_password_change = False

@@ -3,12 +3,13 @@
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import AccessDeniedError, ObjectNotFoundError, ValidationError
 from app.database import get_async_db
 from app.db.models import Inventory, Rentals, User, UsersTeams
 from app.db.schemas import (
@@ -17,7 +18,6 @@ from app.db.schemas import (
     InventoryResponse,
     InventoryUpdate,
 )
-from app.utils.database_service import resolve_target_team_id
 from app.utils.redis_service import acquire_lock
 
 router = APIRouter(prefix="/db", tags=["Inventory"])
@@ -40,14 +40,22 @@ async def create_item(
     :param ctx: Request context for user and team info
     :return: Inventory item.
     """
-    data = inventory_data.model_dump()
-    data["team_id"] = resolve_target_team_id(ctx, data.get("team_id"))
+    ctx.require_user()
 
-    obj = Inventory(**data)
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj, attribute_names=["category", "team"])
-    return obj
+    try:
+        data = inventory_data.model_dump()
+        data["team_id"] = resolve_target_team_id(ctx, data.get("team_id"))
+
+        obj = Inventory(**data)
+        db.add(obj)
+        await db.commit()
+        await db.refresh(obj, attribute_names=["category", "team"])
+        return obj
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(
+            f"Could not create inventory item '{inventory_data.name}'"
+        ) from e
 
 
 @router.get("/inventory/", response_model=List[InventoryResponse])
@@ -167,8 +175,14 @@ async def bulk_create_items(
         data["team_id"] = resolve_target_team_id(ctx, data.get("team_id"))
         new_items.append(Inventory(**data))
 
-    db.add_all(new_items)
-    await db.commit()
+    try:
+        db.add_all(new_items)
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(
+            "Bulk import failed: database integrity error or invalid data"
+        ) from e
 
     for item in new_items:
         await db.refresh(item, attribute_names=["category", "team"])
@@ -214,7 +228,7 @@ async def get_inventory_item_details(
     item = result.unique().scalar_one_or_none()
 
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found or access denied")
+        raise ObjectNotFoundError("Inventory item")
 
     today = datetime.now().date()
 
@@ -273,10 +287,7 @@ async def get_inventory_item(
     item = result.scalar_one_or_none()
 
     if not item:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Item not found or access denied",
-        )
+        raise ObjectNotFoundError("Inventory item")
     return item
 
 
@@ -302,24 +313,22 @@ async def update_item(
         item = result.scalar_one_or_none()
 
         if not item:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Item not found or access denied",
-            )
+            raise ObjectNotFoundError("Inventory item")
 
         data = item_data.model_dump(exclude_unset=True)
         if "team_id" in data and not ctx.is_admin:
             if data["team_id"] not in ctx.team_ids:
-                raise HTTPException(
-                    status_code=403, detail="Access to specified team is denied"
-                )
+                raise AccessDeniedError("Cannot move item to this team")
 
-        for k, v in data.items():
-            setattr(item, k, v)
-
-        await db.commit()
-        await db.refresh(item, attribute_names=["category", "team"])
-        return item
+        try:
+            for k, v in data.items():
+                setattr(item, k, v)
+            await db.commit()
+            await db.refresh(item, attribute_names=["category", "team"])
+            return item
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Failed to update item '{item.name}'") from e
 
 
 @router.delete(
@@ -345,9 +354,12 @@ async def delete_item(
         item = result.scalar_one_or_none()
 
         if not item:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Item not found or access denied",
-            )
-        await db.delete(item)
-        await db.commit()
+            raise ObjectNotFoundError("Inventory item")
+
+        try:
+            await db.delete(item)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Could not delete item '{item.name}'") from e

@@ -5,15 +5,17 @@ Creating Ansible user, gathering platform information and deploying Node Exporte
 
 from datetime import datetime
 
+from fastapi import APIRouter, Depends
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import ExternalServiceError, ValidationError
 from app.database import get_async_db
 from app.db.models import CPUs, Disks, Machines, Metadata, Rooms
 from app.db.schemas import AnsiblePlaybook, DiscoveryRequest, HostRequest
 from app.utils.ansible_service import parse_platform_report, run_playbook_task
 from app.utils.redis_service import acquire_lock
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["Ansible"])
 
@@ -29,29 +31,6 @@ PLAYBOOK_MAP = {
 }
 
 
-async def verify_machine_ownership(
-    machine_id: int, db: AsyncSession, ctx: RequestContext
-):
-    """Check if the machine belongs to the user's team.
-
-    :param machine_id: Machine ID
-    :param db: Async database session
-    :param ctx: Request context for user and team info
-    """
-    stmt = select(Machines).where(Machines.id == machine_id)
-    stmt = ctx.team_filter(stmt, Machines)
-
-    result = await db.execute(stmt)
-    machine = result.scalar_one_or_none()
-
-    if not machine:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Machine not found or access denied.",
-        )
-    return machine
-
-
 @router.post("/ansible/create_user")
 async def create_ansible_user(
     request: HostRequest, ctx: RequestContext = Depends(RequestContext.create)
@@ -63,9 +42,14 @@ async def create_ansible_user(
     :return: Success or error message.
     """
     ctx.require_user()
-    return await run_playbook_task(
-        PLAYBOOK_MAP[AnsiblePlaybook.create_user], request.host, request.extra_vars
-    )
+    try:
+        return await run_playbook_task(
+            PLAYBOOK_MAP[AnsiblePlaybook.create_user], request.host, request.extra_vars
+        )
+    except Exception as e:
+        raise ExternalServiceError(
+            f"Ansible (User Creation: {request.host}) failed", str(e)
+        ) from e
 
 
 @router.post("/ansible/scan_platform")
@@ -79,9 +63,16 @@ async def scan_platform(
     :return: Success or error message.
     """
     ctx.require_user()
-    return await run_playbook_task(
-        PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], request.host, request.extra_vars
-    )
+    try:
+        return await run_playbook_task(
+            PLAYBOOK_MAP[AnsiblePlaybook.scan_platform],
+            request.host,
+            request.extra_vars,
+        )
+    except Exception as e:
+        raise ExternalServiceError(
+            f"Ansible (Platform Scan: {request.host}) failed", str(e)
+        ) from e
 
 
 @router.post("/ansible/deploy_agent")
@@ -95,9 +86,14 @@ async def deploy_agent(
     :return: Success or error message.
     """
     ctx.require_user()
-    return await run_playbook_task(
-        PLAYBOOK_MAP[AnsiblePlaybook.deploy_agent], request.host, request.extra_vars
-    )
+    try:
+        return await run_playbook_task(
+            PLAYBOOK_MAP[AnsiblePlaybook.deploy_agent], request.host, request.extra_vars
+        )
+    except Exception as e:
+        raise ExternalServiceError(
+            f"Node Exporter (Prometheus Deployment: {request.host}) failed", str(e)
+        ) from e
 
 
 @router.post("/ansible/setup_agent")
@@ -120,18 +116,14 @@ async def setup_agent(
         deploy_result = await run_playbook_task(
             PLAYBOOK_MAP[AnsiblePlaybook.deploy_agent], request.host, request.extra_vars
         )
-    except HTTPException:
-        raise
-
+        return {
+            "user_creation": user_result,
+            "node_exporter_deployment": deploy_result,
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Unexpected error during setup_agent workflow: {e}"
+        raise ExternalServiceError(
+            f"Ansible + Prometheus Workflow ({request.host}) failed", str(e)
         ) from e
-
-    return {
-        "user_creation": user_result,
-        "node_exporter_deployment": deploy_result,
-    }
 
 
 @router.post("/ansible/discovery")
@@ -149,20 +141,28 @@ async def discover_hosts(
     """
     ctx.require_user()
     if not request.hosts:
-        raise HTTPException(status_code=400, detail="Host list cannot be empty.")
+        raise ValidationError("Host list cannot be empty.")
 
     target_team_id = request.target_team_id
     if not target_team_id:
         if len(ctx.team_ids) == 1:
             target_team_id = ctx.team_ids[0]
         else:
-            raise HTTPException(status_code=400, detail="Target team ID required.")
-    elif not ctx.is_admin and target_team_id not in ctx.team_ids:
-        raise HTTPException(status_code=403, detail="Access denied for this team.")
+            raise ValidationError("Target team ID required.")
 
-    await run_playbook_task(
-        PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], request.hosts, request.extra_vars
-    )
+    await ctx.validate_team_access(target_team_id)
+
+    try:
+        await run_playbook_task(
+            PLAYBOOK_MAP[AnsiblePlaybook.scan_platform],
+            request.hosts,
+            request.extra_vars,
+        )
+    except Exception as e:
+        hosts_str = ", ".join(request.hosts)
+        raise ExternalServiceError(
+            f"Ansible Discovery Scan for hosts [{hosts_str}] failed", str(e)
+        ) from e
 
     results = []
     res_room = await db.execute(
@@ -250,7 +250,13 @@ async def discover_hosts(
                 results.append({"host": host, "status": "created"})
 
         except Exception as e:
-            results.append({"host": host, "status": "error", "detail": str(e)})
+            results.append(
+                {
+                    "host": host,
+                    "status": "error",
+                    "detail": f"Data processing for {host} failed: {str(e)}",
+                }
+            )
 
     await db.commit()
     return {"summary": results}
@@ -271,12 +277,15 @@ async def refresh_machine_hardware(
     :param ctx: Request context for user and team info
     :return: Success or error message.
     """
-    machine = await verify_machine_ownership(machine_id, db, ctx)
-    await run_playbook_task(
-        PLAYBOOK_MAP[AnsiblePlaybook.scan_platform], [machine.name], request.extra_vars
-    )
+    stmt = select(Machines).filter(Machines.id == machine_id)
+    machine = (await db.execute(ctx.team_filter(stmt, Machines))).scalar_one_or_none()
 
     try:
+        await run_playbook_task(
+            PLAYBOOK_MAP[AnsiblePlaybook.scan_platform],
+            [machine.name],
+            request.extra_vars,
+        )
         specs = parse_platform_report(machine.name)
         for field in ["os", "ram", "mac_address", "ip_address", "name"]:
             setattr(machine, field, specs.get(field))
@@ -305,10 +314,15 @@ async def refresh_machine_hardware(
             meta.last_update = datetime.now()
 
         await db.commit()
-        return {"message": "Updated successfully", "data": specs}
+        return {
+            "message": f"Hardware for {machine.name} refreshed successfully",
+            "data": specs,
+        }
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise ExternalServiceError(
+            f"Hardware Refresh for {machine.name} failed", str(e)
+        ) from e
 
 
 @router.post("/ansible/machine/{machine_id}/cleanup")
@@ -327,7 +341,10 @@ async def cleanup_machine(
     :return: Success or error message.
     """
     async with acquire_lock(f"machine_lock:{machine_id}"):
-        machine = await verify_machine_ownership(machine_id, db, ctx)
+        stmt = select(Machines).filter(Machines.id == machine_id)
+        machine = (
+            await db.execute(ctx.team_filter(stmt, Machines))
+        ).scalar_one_or_none()
         try:
             agent_res = await run_playbook_task(
                 PLAYBOOK_MAP[AnsiblePlaybook.delete_agent],
@@ -352,13 +369,15 @@ async def cleanup_machine(
 
             await db.commit()
             return {
-                "message": "Cleaned",
-                "agent_result": agent_res,
-                "ansible_result": ansible_res,
+                "message": f"Cleanup for {machine.name} completed",
+                "agent": agent_res,
+                "ansible": ansible_res,
             }
         except Exception as e:
             await db.rollback()
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            raise ExternalServiceError(
+                f"Ansible Cleanup for {machine.name} failed", str(e)
+            ) from e
 
 
 @router.post("/ansible/machine/{machine_id}/remove_agent")
@@ -377,7 +396,10 @@ async def remove_agent(
     :return: Success or error message.
     """
     async with acquire_lock(f"machine_lock:{machine_id}"):
-        machine = await verify_machine_ownership(machine_id, db, ctx)
+        stmt = select(Machines).filter(Machines.id == machine_id)
+        machine = (
+            await db.execute(ctx.team_filter(stmt, Machines))
+        ).scalar_one_or_none()
         try:
             agent_res = await run_playbook_task(
                 PLAYBOOK_MAP[AnsiblePlaybook.delete_agent],
@@ -393,7 +415,12 @@ async def remove_agent(
                 meta.last_update = datetime.now()
 
             await db.commit()
-            return {"message": "Agent removed", "agent_result": agent_res}
+            return {
+                "message": f"Agent removed from {machine.name}",
+                "agent_result": agent_res,
+            }
         except Exception as e:
             await db.rollback()
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            raise ExternalServiceError(
+                f"Agent Removal for {machine.name} failed"
+            ) from e

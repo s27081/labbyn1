@@ -2,12 +2,13 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import ObjectNotFoundError, ValidationError
 from app.database import get_async_db
 from app.db.models import Documentation, Tags
 from app.db.schemas import (
@@ -60,21 +61,26 @@ async def create_documentation(
     ctx.require_user()
     current_author = ctx.current_user.login
     tag_ids = documentation_data.tag_ids or []
+    try:
+        obj = Documentation(
+            **documentation_data.model_dump(exclude={"tag_ids"}), author=current_author
+        )
 
-    obj = Documentation(
-        **documentation_data.model_dump(exclude={"tag_ids"}), author=current_author
-    )
+        if tag_ids:
+            tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
+            tag_result = await db.execute(tag_stmt)
+            obj.tags = tag_result.scalars().all()
 
-    if tag_ids:
-        tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
-        tag_result = await db.execute(tag_stmt)
-        obj.tags = tag_result.scalars().all()
-
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj)
-    await db.refresh(obj, attribute_names=["tags"])
-    return obj
+        db.add(obj)
+        await db.commit()
+        await db.refresh(obj)
+        await db.refresh(obj, attribute_names=["tags"])
+        return obj
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(
+            f"Could not create document: '{documentation_data.title}'"
+        ) from e
 
 
 @router.get(
@@ -103,9 +109,7 @@ async def get_documentation_by_id(
     document = result.unique().scalar_one_or_none()
 
     if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
-        )
+        raise ObjectNotFoundError("Document")
     return document
 
 
@@ -138,24 +142,28 @@ async def update_documentation(
         document = result.unique().scalar_one_or_none()
 
         if not document:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
-            )
+            raise ObjectNotFoundError("Document")
 
-        update_data = documentation_data.model_dump(exclude_unset=True)
-        if "tag_ids" in update_data:
-            tag_ids = update_data.pop("tag_ids")
-            tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
-            tag_result = await db.execute(tag_stmt)
-            document.tags = tag_result.scalars().all()
+        try:
+            update_data = documentation_data.model_dump(exclude_unset=True)
+            if "tag_ids" in update_data:
+                tag_ids = update_data.pop("tag_ids")
+                tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
+                tag_result = await db.execute(tag_stmt)
+                document.tags = tag_result.scalars().all()
 
-        for k, v in update_data.items():
-            setattr(document, k, v)
+            for k, v in update_data.items():
+                setattr(document, k, v)
 
-        await db.commit()
-        await db.refresh(document)
-        await db.refresh(document, attribute_names=["tags"])
-        return document
+            await db.commit()
+            await db.refresh(document)
+            await db.refresh(document, attribute_names=["tags"])
+            return document
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Failed to update document: '{document.title}'"
+            ) from e
 
 
 @router.delete(
@@ -181,9 +189,11 @@ async def delete_document(
         document = result.scalar_one_or_none()
 
         if not document:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
-            )
-
-        await db.delete(document)
-        await db.commit()
+            raise ObjectNotFoundError("Document")
+        try:
+            await db.delete(document)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Could not delete document: {document.title}") from e

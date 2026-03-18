@@ -2,11 +2,13 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import AccessDeniedError, ObjectNotFoundError, ValidationError
 from app.database import get_async_db
 from app.db.models import CPUs, Machines
 from app.db.schemas import CPUCreate, CPUResponse, CPUUpdate
@@ -32,11 +34,12 @@ async def create_cpu(
     :param ctx: Request context for user and team info
     :return: CPU object.
     """
+    ctx.require_user()
+
     if not ctx.is_admin:
         if not getattr(cpu_data, "machine_id", None):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Non-admin users must attach CPUs to a specific machine.",
+            raise AccessDeniedError(
+                "Non-admin users must attach CPUs to a specific machine."
             )
 
     stmt = select(Machines).where(Machines.id == cpu_data.machine_id)
@@ -45,16 +48,19 @@ async def create_cpu(
     machine = result.scalar_one_or_none()
 
     if not machine:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Target machine not found or access denied.",
-        )
+        raise ObjectNotFoundError("Machine for this CPU")
 
-    obj = CPUs(**cpu_data.model_dump())
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj)
-    return obj
+    try:
+        obj = CPUs(**cpu_data.model_dump())
+        db.add(obj)
+        await db.commit()
+        await db.refresh(obj)
+        return obj
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(
+            f"Failed to add CPU '{cpu_data.name}' to machine '{machine.name}'"
+        ) from e
 
 
 @router.get("/cpus", response_model=List[CPUResponse])
@@ -68,6 +74,8 @@ async def get_cpus(
     :param ctx: Request context for user and team info
     :return: List of all CPUs.
     """
+    ctx.require_user()
+
     stmt = select(CPUs).join(Machines)
     stmt = ctx.team_filter(stmt, Machines)
     result = await db.execute(stmt)
@@ -94,9 +102,7 @@ async def get_cpu_by_id(
     cpu = result.scalar_one_or_none()
 
     if not cpu:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="CPU not found"
-        )
+        raise ObjectNotFoundError("CPU")
     return cpu
 
 
@@ -115,23 +121,33 @@ async def update_cpu(
     :param ctx: Request context for user and team info
     :return: Updated CPU.
     """
-    ctx.require_admin()
+    ctx.require_user()
 
     async with acquire_lock(f"cpu_lock:{cpu_id}"):
-        stmt = select(CPUs).join(Machines).filter(CPUs.id == cpu_id)
+        stmt = (
+            select(CPUs)
+            .options(selectinload(CPUs.machine))
+            .join(Machines)
+            .filter(CPUs.id == cpu_id)
+        )
         stmt = ctx.team_filter(stmt, Machines)
         result = await db.execute(stmt)
         cpu = result.scalar_one_or_none()
 
         if not cpu:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="CPU not found"
-            )
-        for k, v in cpu_data.model_dump(exclude_unset=True).items():
-            setattr(cpu, k, v)
-        await db.commit()
-        await db.refresh(cpu)
-        return cpu
+            raise ObjectNotFoundError("CPU")
+
+        try:
+            for k, v in cpu_data.model_dump(exclude_unset=True).items():
+                setattr(cpu, k, v)
+            await db.commit()
+            await db.refresh(cpu)
+            return cpu
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Update failed for CPU '{cpu.name}' on machine '{cpu.machine.name}'"
+            ) from e
 
 
 @router.delete(
@@ -150,17 +166,28 @@ async def delete_cpu(
     :param ctx: Request context for user and team info
     :return: 204 No Content as success
     """
-    ctx.require_admin()
+    ctx.require_user()
 
     async with acquire_lock(f"cpu_lock:{cpu_id}"):
-        stmt = select(CPUs).join(Machines).filter(CPUs.id == cpu_id)
+        stmt = (
+            select(CPUs)
+            .options(selectinload(CPUs.machine))
+            .join(Machines)
+            .filter(CPUs.id == cpu_id)
+        )
         stmt = ctx.team_filter(stmt, Machines)
         result = await db.execute(stmt)
         cpu = result.scalar_one_or_none()
 
         if not cpu:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="CPU not found"
-            )
-        await db.delete(cpu)
-        await db.commit()
+            raise ObjectNotFoundError("CPU")
+
+        try:
+            await db.delete(cpu)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Could not delete CPU '{cpu.name}' from {cpu.machine.name}"
+            ) from e

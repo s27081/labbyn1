@@ -2,11 +2,12 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import ObjectNotFoundError, ValidationError
 from app.database import get_async_db
 from app.db.models import Categories
 from app.db.schemas import CategoriesCreate, CategoriesResponse, CategoriesUpdate
@@ -34,6 +35,13 @@ async def create_category(
     :return: Category object.
     """
     ctx.require_admin()
+
+    existing_stmt = select(Categories).where(Categories.name == category_data.name)
+    existing_res = await db.execute(existing_stmt)
+    if existing_res.scalar_one_or_none():
+        raise ValidationError(
+            f"Category with name '{category_data.name}' already exists."
+        )
 
     obj = Categories(**category_data.model_dump())
     db.add(obj)
@@ -78,9 +86,7 @@ async def get_category_by_id(
     cat = result.scalar_one_or_none()
 
     if not cat:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Category not found"
-        )
+        raise ObjectNotFoundError("Category")
     return cat
 
 
@@ -106,16 +112,18 @@ async def update_category(
         cat = result.scalar_one_or_none()
 
         if not cat:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Category not found"
-            )
+            raise ObjectNotFoundError("Category")
 
-        for k, v in cat_data.model_dump(exclude_unset=True).items():
-            setattr(cat, k, v)
+        try:
+            for k, v in cat_data.model_dump(exclude_unset=True).items():
+                setattr(cat, k, v)
 
-        await db.commit()
-        await db.refresh(cat)
-        return cat
+            await db.commit()
+            await db.refresh(cat)
+            return cat
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Failed to update category '{cat.name}'") from e
 
 
 @router.delete(
@@ -141,9 +149,12 @@ async def delete_category(
         cat = result.scalar_one_or_none()
 
         if not cat:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Category not found"
-            )
+            raise ObjectNotFoundError("Category")
 
-        await db.delete(cat)
-        await db.commit()
+        try:
+            await db.delete(cat)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Could not delete category '{cat.name}'") from e
