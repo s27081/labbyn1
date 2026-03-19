@@ -147,5 +147,6 @@ class RequestContext:
             if not team_name:
                 raise ObjectNotFoundError("Team")
 
-            raise AccessDeniedError(f"Insufficient permissions "
-                                    f"to manage items for team '{team_name}'")
+            raise AccessDeniedError(
+                f"Insufficient permissions " f"to manage items for team '{team_name}'"
+            )

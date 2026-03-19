@@ -5,6 +5,7 @@ from typing import Optional
 
 class AppBaseException(Exception):
     """Base class for exceptions."""
+
     def __init__(self, message: str, code: str = "INTERNAL_ERROR"):
         """Create base expection.
 
@@ -17,6 +18,7 @@ class AppBaseException(Exception):
 
 class ObjectNotFoundError(AppBaseException):
     """Exception for 404."""
+
     def __init__(self, obj_type: str, name: Optional[str] = None):
         """Create ObjectNotFound expection.
 
@@ -29,6 +31,7 @@ class ObjectNotFoundError(AppBaseException):
 
 class AccessDeniedError(AppBaseException):
     """Exception for 403."""
+
     def __init__(self, detail: str = "Access denied"):
         """Create AccessDeniedError expection.
 
@@ -40,6 +43,7 @@ class AccessDeniedError(AppBaseException):
 
 class ExternalServiceError(AppBaseException):
     """Exception for 503."""
+
     def __init__(self, service: str, detail: str):
         """Create ExternalServiceError expection.
 
@@ -51,6 +55,7 @@ class ExternalServiceError(AppBaseException):
 
 class InsufficientAmountError(AppBaseException):
     """Custom exception for rental logics."""
+
     def __init__(self, requested: int, available: int):
         """Create InsufficientAmountError expection.
 
@@ -62,8 +67,10 @@ class InsufficientAmountError(AppBaseException):
             "INSUFFICIENT_AMOUNT",
         )
 
+
 class ValidationError(AppBaseException):
     """Common exception for mismatches created by user."""
+
     def __init__(self, message: str):
         """Create ValidationError expection.
 
@@ -75,6 +82,7 @@ class ValidationError(AppBaseException):
 
 class ConflictError(AppBaseException):
     """Exception for 409, when violating unique constraints."""
+
     def __init__(self, message: str):
         """Create ConflictError expection.
 
