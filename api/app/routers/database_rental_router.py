@@ -141,8 +141,10 @@ async def return_rental(
                 msg = f"Fully returned '{item.name}'"
             else:
                 rental.quantity -= qty_to_return
-                msg = (f"Partially returned {qty_to_return}x "
-                       f"'{item.name}'. Remaining: {rental.quantity}")
+                msg = (
+                    f"Partially returned {qty_to_return}x "
+                    f"'{item.name}'. Remaining: {rental.quantity}"
+                )
 
             item.rental_status = False
             await db.commit()

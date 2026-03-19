@@ -114,7 +114,7 @@ async def acquire_lock(
         is_locked = await lock.acquire(blocking=True)
         if not is_locked:
             raise ConflictError(
-                f"Resource '{lock_name.replace("lock:", "").replace(":", "")}' "
+                f"Resource '{lock_name.replace('lock:', '').replace(':', '')}' "
                 f"is currently locked by another user. "
                 f"Please try again in a moment."
             )
@@ -122,8 +122,7 @@ async def acquire_lock(
 
     except RedisError as e:
         raise ExternalServiceError(
-            service="Redis",
-            detail="Distributed lock system failure."
+            service="Redis", detail="Distributed lock system failure."
         ) from e
 
     finally:

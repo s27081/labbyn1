@@ -59,8 +59,7 @@ async def _request(
         except (httpx.RequestError, asyncio.TimeoutError):
             await asyncio.sleep(backoff_factor)
     raise ExternalServiceError(
-        service="Prometheus",
-        detail=f"Failed to connect after {retries} attempts:"
+        service="Prometheus", detail=f"Failed to connect after {retries} attempts:"
     )
 
 
@@ -98,8 +97,9 @@ async def fetch_prometheus_metrics(
     for m in metrics:
         query = DEFAULT_QUERIES.get(m)
         if not query:
-            results[m] = {"error": f"Metric definition for '{m}' "
-                                   f"not found in configuration"}
+            results[m] = {
+                "error": f"Metric definition for '{m}' " f"not found in configuration"
+            }
             continue
         try:
             payload = await _request(url, params={"query": query})
@@ -130,8 +130,9 @@ async def load_targets_file():
             targets = json.loads(content)
         return targets
     except (FileNotFoundError, OSError, json.JSONDecodeError) as e:
-        raise ValidationError("Prometheus targets file is corrupted or unreadable") \
-            from e
+        raise ValidationError(
+            "Prometheus targets file is corrupted or unreadable"
+        ) from e
 
 
 async def save_targets_file(targets: List[dict]):
@@ -147,8 +148,9 @@ async def save_targets_file(targets: List[dict]):
         ) as file:
             await file.write(json.dumps(targets, indent=2))
     except (OSError, TypeError) as e:
-        raise ValidationError("Prometheus targets file is corrupted or unreadable") \
-            from e
+        raise ValidationError(
+            "Prometheus targets file is corrupted or unreadable"
+        ) from e
 
 
 async def add_prometheus_target(instance: str, labels: dict):
@@ -158,12 +160,13 @@ async def add_prometheus_target(instance: str, labels: dict):
     :param labels: Labels for the new target.
     """
     entry = {"targets": [instance], "labels": labels}
-    async with (_targets_lock):
+    async with _targets_lock:
         targets = await load_targets_file()
         targets.append(entry)
         try:
             await save_targets_file(targets)
         except TargetSaveError as e:
-            raise ValidationError("Prometheus targets file is corrupted or unreadable")\
-                from e
+            raise ValidationError(
+                "Prometheus targets file is corrupted or unreadable"
+            ) from e
     return entry

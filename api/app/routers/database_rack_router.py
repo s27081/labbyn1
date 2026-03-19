@@ -8,7 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.auth.dependencies import RequestContext
-from app.core.exceptions import AccessDeniedError, ObjectNotFoundError, ValidationError, AppBaseException, ConflictError
+from app.core.exceptions import (
+    AccessDeniedError,
+    ObjectNotFoundError,
+    ValidationError,
+    AppBaseException,
+    ConflictError,
+)
 from app.database import get_async_db
 from app.db.models import Machines, Rack, Rooms, Shelf, Tags
 from app.db.schemas import (
@@ -214,7 +220,7 @@ async def create_rack(
             selectinload(Rack.room),
             selectinload(Rack.team),
             selectinload(Rack.tags),
-            selectinload(Rack.shelves)
+            selectinload(Rack.shelves),
         )
     )
     result = await db.execute(stmt)

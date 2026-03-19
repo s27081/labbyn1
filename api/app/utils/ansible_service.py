@@ -79,7 +79,9 @@ def parse_platform_report(hostname: str) -> dict:
         }
 
     except Exception as e:
-        raise ValidationError(f"Error parsing platform report for host '{hostname}'") from e
+        raise ValidationError(
+            f"Error parsing platform report for host '{hostname}'"
+        ) from e
 
 
 async def run_playbook_task(playbook_path: str, host: str | list, extra_vars: dict):
@@ -108,7 +110,9 @@ async def run_playbook_task(playbook_path: str, host: str | list, extra_vars: di
     try:
         r = await asyncio.to_thread(_run)
     except Exception as e:
-        raise ValidationError(f"Failed to initialize Ansible runner for hosts '{hosts_display}'") from e
+        raise ValidationError(
+            f"Failed to initialize Ansible runner for hosts '{hosts_display}'"
+        ) from e
 
     if r.rc != 0 or r.status != "successful":
         playbook_name = os.path.basename(playbook_path)

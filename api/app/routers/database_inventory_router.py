@@ -44,7 +44,7 @@ async def create_item(
 
     try:
         data = inventory_data.model_dump()
-        await ctx.validate_team_access(data['team_id'])
+        await ctx.validate_team_access(data["team_id"])
 
         obj = Inventory(**data)
         db.add(obj)

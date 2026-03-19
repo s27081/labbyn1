@@ -1257,6 +1257,7 @@ class RackWithOrderedMachinesResponse(RackBase):
 #  ANSIBLE & NODE EXPORTER
 # ==========================
 
+
 class HostRequest(BaseModel):
     """Pydantic model for a host input."""
 
@@ -1280,6 +1281,7 @@ class DiscoveryRequest(BaseModel):
     hosts: List[str]
     target_team_id: Optional[int] = None
     extra_vars: Optional[dict] = {}
+
 
 class PrometheusTarget(BaseModel):
     """Pydantic model for Prometheus target."""
@@ -1309,4 +1311,3 @@ class GroupedSearchResponse(BaseModel):
     rooms: List[SearchItem] = []
     inventory: List[SearchItem] = []
     documentation: List[SearchItem] = []
-
