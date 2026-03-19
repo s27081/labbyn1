@@ -98,7 +98,6 @@ async def websocket_endpoint(
     db: AsyncSession = Depends(get_async_db),
     user_manager=Depends(get_user_manager),
     strategy=Depends(get_database_strategy),
-    ctx: RequestContext = Depends(RequestContext.create),
 ):
     """WebSocket endpoint to push metrics data to front-end.
 
@@ -108,7 +107,6 @@ async def websocket_endpoint(
     :param instance: Optional instance filter
     :return: Fetch ws data
     """
-    ctx.require_user()
 
     manager.websocket = ws
     await ws.accept()
@@ -150,21 +148,29 @@ async def websocket_endpoint(
                 payload = {
                     "instance": target,
                     "online": is_online,
-                    "cpu": next(
-                        (
-                            m["value"]
-                            for m in metrics_parsed.get("cpu_usage", [])
-                            if m["instance"] == target
-                        ),
-                        None,
+                    "cpu": (
+                        next(
+                            (
+                                m["value"]
+                                for m in metrics_parsed.get("cpu_usage", [])
+                                if m["instance"] == target
+                            ),
+                            None,
+                        )
+                        if is_online
+                        else None
                     ),
-                    "memory": next(
-                        (
-                            m["value"]
-                            for m in metrics_parsed.get("memory_usage", [])
-                            if m["instance"] == target
-                        ),
-                        None,
+                    "memory": (
+                        next(
+                            (
+                                m["value"]
+                                for m in metrics_parsed.get("memory_usage", [])
+                                if m["instance"] == target
+                            ),
+                            None,
+                        )
+                        if is_online
+                        else None
                     ),
                     "disks": [
                         {"value": round(m["value"], 2), "timestamp": m["timestamp"]}

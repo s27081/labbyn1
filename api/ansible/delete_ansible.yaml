@@ -4,13 +4,12 @@
   become: yes
   vars:
     ansible_user_name: ansible
+
   tasks:
-    - name: Remove passwordless sudo access for ansible user
-      lineinfile:
-        path: /etc/sudoers
-        regexp: '^{{ ansible_user_name }} ALL=\(ALL\) NOPASSWD: ALL'
+    - name: Remove passwordless sudo access file for ansible user
+      file:
+        path: "/etc/sudoers.d/{{ ansible_user_name }}"
         state: absent
-        validate: 'visudo -cf %s'
 
     - name: Remove ansible user and its home directory
       user:

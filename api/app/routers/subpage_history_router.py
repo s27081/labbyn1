@@ -51,11 +51,14 @@ def get_state_diff(
     :param after: After action state
     :return Diff between passed states
     """
-    before = before or {}
-    after = after or {}
+    before = before if before is not None else {}
+    after = after if after is not None else {}
 
     b_clean = {k: v for k, v in before.items() if k not in INTERNAL_KEYS}
     a_clean = {k: v for k, v in after.items() if k not in INTERNAL_KEYS}
+
+    if not b_clean or not a_clean:
+        return b_clean, a_clean
 
     diff_before = {}
     diff_after = {}
@@ -67,10 +70,8 @@ def get_state_diff(
         val_a = a_clean.get(key)
 
         if val_b != val_a:
-            if val_b is not None:
-                diff_before[key] = val_b
-            if val_a is not None:
-                diff_after[key] = val_a
+            diff_before[key] = val_b
+            diff_after[key] = val_a
 
     return diff_before, diff_after
 
