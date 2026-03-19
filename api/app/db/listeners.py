@@ -18,10 +18,22 @@ def json_serializer(obj: Any):
     :param obj: object to serialize
     :return: JSON-serializable string representation
     """
+    if obj is None:
+        return None
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
     if isinstance(obj, Enum):
         return obj.value
+
+    if isinstance(obj, (list, set)):
+        return [json_serializer(item) for item in obj]
+
+    if hasattr(obj, "__tablename__"):
+        return getattr(obj, "name", getattr(obj, "id", str(obj)))
+
+    if isinstance(obj, (int, float, bool)):
+        return obj
+
     return str(obj)
 
 
@@ -91,7 +103,6 @@ def receive_before_flush(
     :return: None
     """
     user_id = session.info.get("user_id", 1)
-
     objects_to_create = session.info.setdefault("objects_to_create_history", [])
     for obj in session.new:
         if isinstance(obj, History):
@@ -107,21 +118,62 @@ def receive_before_flush(
             continue
 
         changes = {}
-        for attr in inspect(obj).attrs:
+        before_dict = {}
+        after_dict = {}
+
+        can_rollback = True
+        has_changes = False
+
+        state = inspect(obj)
+        mapper = state.mapper
+
+        for attr in state.attrs:
             hist = attr.history
+
+            if attr.key not in mapper.column_attrs:
+                if hist.has_changes():
+                    can_rollback = False
+                    has_changes = True
+
+                    before_dict[attr.key] = (
+                        [json_serializer(x) for x in hist.deleted]
+                        if hist.deleted
+                        else []
+                    )
+                    after_dict[attr.key] = (
+                        [json_serializer(x) for x in hist.added] if hist.added else []
+                    )
+                continue
+
+            current_val = getattr(obj, attr.key)
+            original_val = hist.deleted[0] if hist.deleted else current_val
+
+            before_dict[attr.key] = original_val
+            after_dict[attr.key] = current_val
+
             if hist.has_changes() and attr.key != "version_id":
+                has_changes = True
                 changes[attr.key] = {
-                    "old": hist.deleted[0] if hist.deleted else None,
-                    "new": hist.added[0] if hist.added else None,
+                    "old": original_val,
+                    "new": current_val,
                 }
-        if changes:
+
+        if has_changes:
+
+            before_json = json.loads(json.dumps(before_dict, default=json_serializer))
+            after_json = json.loads(json.dumps(after_dict, default=json_serializer))
+            extra_json = json.loads(json.dumps(changes, default=json_serializer))
+
             session.add(
                 History(
                     entity_type=entity_type,
                     action=ActionType.UPDATE,
                     entity_id=obj.id,
+                    before_state=before_json,
+                    after_state=after_json,
                     user_id=user_id,
-                    extra_data=json.loads(json.dumps(changes, default=json_serializer)),
+                    extra_data=extra_json,
+                    can_rollback=can_rollback,
                 )
             )
 
@@ -139,6 +191,7 @@ def receive_before_flush(
                 entity_id=obj.id,
                 user_id=user_id,
                 before_state=get_entity_state(obj),
+                can_rollback=True,
             )
         )
 
