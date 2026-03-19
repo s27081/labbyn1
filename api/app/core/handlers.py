@@ -35,9 +35,9 @@ def setup_exception_handlers(app: FastAPI):
             status_code = 404
         elif isinstance(exc, AccessDeniedError):
             status_code = 403
-        elif isinstance(exc, (ValidationError, InsufficientAmountError)):
+        elif isinstance(exc, ValidationError):
             status_code = 400
-        elif isinstance(exc, ConflictError):
+        elif isinstance(exc, (ConflictError, InsufficientAmountError)):
             status_code = 409
         elif isinstance(exc, ExternalServiceError):
             status_code = 502
@@ -52,6 +52,8 @@ def setup_exception_handlers(app: FastAPI):
 
         409 status code indicates integrity error in database
         (foreign keys, not unique constraints).
+        Currently we handle the unique constraints, but in very specific cases
+        this error will occur.
         Instead of just returning raw code from SQLAlchemy which user doesn't understand
         we will return simple message about constraints violation.
 
@@ -62,8 +64,7 @@ def setup_exception_handlers(app: FastAPI):
         return JSONResponse(
             status_code=409,
             content={
-                "detail": "Database integrity violation. "
-                "This item might already exist or is linked to other records.",
+                "detail": "This item might already exists or is linked to another item.",
                 "code": "DB_INTEGRITY_ERROR",
             },
         )
@@ -73,7 +74,7 @@ def setup_exception_handlers(app: FastAPI):
         """Handler for 500 request.
 
         500 status code indicates every error that was not caught intentionally.
-        Instead of just returning Network issue - which is missleading, we
+        Instead of just returning Network issue - which is misleading, we
         will return message
         about internal serval error.
 
@@ -85,7 +86,7 @@ def setup_exception_handlers(app: FastAPI):
             status_code=500,
             content={
                 "detail": "An unexpected internal server error occurred. "
-                          "Please contact the administrator.",
+                "Please contact the administrator.",
                 "code": "INTERNAL_SERVER_ERROR",
             },
         )
