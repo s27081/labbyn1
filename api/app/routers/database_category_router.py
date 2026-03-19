@@ -4,10 +4,11 @@ from typing import List
 
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import RequestContext
-from app.core.exceptions import ObjectNotFoundError, ValidationError
+from app.core.exceptions import ObjectNotFoundError, ValidationError, ConflictError
 from app.database import get_async_db
 from app.db.models import Categories
 from app.db.schemas import CategoriesCreate, CategoriesResponse, CategoriesUpdate
@@ -36,18 +37,28 @@ async def create_category(
     """
     ctx.require_admin()
 
-    existing_stmt = select(Categories).where(Categories.name == category_data.name)
-    existing_res = await db.execute(existing_stmt)
-    if existing_res.scalar_one_or_none():
-        raise ValidationError(
-            f"Category with name '{category_data.name}' already exists."
-        )
-
     obj = Categories(**category_data.model_dump())
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj)
-    return obj
+
+    try:
+        db.add(obj)
+        await db.flush()
+        await db.commit()
+
+        res = await db.execute(select(Categories).where(Categories.id == obj.id))
+        return res.scalar_one()
+
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            message=f"Category with name '{category_data.name}' already exists."
+        )
+    except Exception as e:
+        await db.rollback()
+        if isinstance(e, ConflictError):
+            raise e
+        raise ValidationError(
+            f"Could not create category: '{category_data.name}'"
+        ) from e
 
 
 @router.get("/categories", response_model=List[CategoriesResponse])
@@ -114,16 +125,30 @@ async def update_category(
         if not cat:
             raise ObjectNotFoundError("Category")
 
+        old_name = cat.name
+
         try:
-            for k, v in cat_data.model_dump(exclude_unset=True).items():
+            update_data = cat_data.model_dump(exclude_unset=True)
+            for k, v in update_data.items():
                 setattr(cat, k, v)
 
+            await db.flush()
             await db.commit()
-            await db.refresh(cat)
-            return cat
+
+            res = await db.execute(select(Categories).where(Categories.id == cat_id))
+            return res.scalar_one()
+
+        except IntegrityError:
+            await db.rollback()
+            new_name = update_data.get("name") or old_name
+            raise ConflictError(
+                message=f"Update failed. Category name '{new_name}' is already taken."
+            )
         except Exception as e:
             await db.rollback()
-            raise ValidationError(f"Failed to update category '{cat.name}'") from e
+            if isinstance(e, ConflictError):
+                raise e
+            raise ValidationError(f"Failed to update category '{old_name}'") from e
 
 
 @router.delete(

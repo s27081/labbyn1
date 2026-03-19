@@ -4,13 +4,11 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import RequestContext
-from app.core.exceptions import (
-    ObjectNotFoundError,
-    ValidationError,
-)
+from app.core.exceptions import ObjectNotFoundError, ValidationError, ConflictError
 from app.database import get_async_db
 from app.db.models import Documentation, Machines, Rack, Rooms, Tags
 from app.db.schemas import TagsAssignment, TagsCreate, TagsResponse, TagsUpdate
@@ -75,14 +73,14 @@ async def assign_tag(
         entity = result.scalar_one_or_none()
 
         if not entity:
-            raise HTTPException(status_code=404, detail="Entity not found")
+            raise ObjectNotFoundError(data.entity_type.capitalize())
 
         tag_stmt = select(Tags).where(Tags.id.in_(data.tag_ids))
         tag_res = await db.execute(tag_stmt)
         tags_to_add = tag_res.scalars().all()
 
         if not tags_to_add:
-            raise ObjectNotFoundError("Tags", name=f"IDs: {data.tag_ids}")
+            raise ObjectNotFoundError("Tag")
 
         await db.refresh(entity, ["tags"])
         entity_name = getattr(entity, "name", str(entity.id))
@@ -99,7 +97,7 @@ async def assign_tag(
             await db.commit()
             return {
                 "message": f"Assigned tags [{', '.join(new_tags_names)}] "
-                           f"to {data.entity_type} '{entity_name}'"
+                f"to {data.entity_type} '{entity_name}'"
             }
 
         return {"message": f"Tags already assigned to '{entity_name}'"}
@@ -133,7 +131,7 @@ async def detach_tag(
         entity = (await db.execute(stmt)).scalar_one_or_none()
 
         if not entity:
-            raise ObjectNotFoundError(data.entity_type.capitalize(), id=data.entity_id)
+            raise ObjectNotFoundError(data.entity_type.capitalize())
 
         if not data.tag_ids:
             raise ValidationError("No tag IDs provided for detachment")
@@ -144,7 +142,7 @@ async def detach_tag(
         ).scalar_one_or_none()
 
         if not tag:
-            raise ObjectNotFoundError("Tag", id=target_tag_id)
+            raise ObjectNotFoundError("Tag")
 
         await db.refresh(entity, ["tags"])
         entity_name = getattr(entity, "name", str(entity.id))
@@ -154,7 +152,7 @@ async def detach_tag(
             await db.commit()
             return {
                 "message": f"Tag '{tag.name}' detached from "
-                           f"{data.entity_type} '{entity_name}'"
+                f"{data.entity_type} '{entity_name}'"
             }
 
         return {"message": f"Tag '{tag.name}' was not assigned to '{entity_name}'"}
@@ -179,14 +177,21 @@ async def create_tag(
     """
     ctx.require_group_admin()
 
+    obj = Tags(**tag_data.model_dump())
     try:
-        obj = Tags(**tag_data.model_dump())
         db.add(obj)
+        await db.flush()
         await db.commit()
-        await db.refresh(obj)
-        return obj
+
+        res = await db.execute(select(Tags).where(Tags.id == obj.id))
+        return res.scalar_one()
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(message=f"Tag with name '{tag_data.name}' already exists.")
     except Exception as e:
         await db.rollback()
+        if isinstance(e, ConflictError):
+            raise e
         raise ValidationError(f"Failed to create tag '{tag_data.name}'") from e
 
 
@@ -244,17 +249,31 @@ async def update_tag(
         if not tag:
             raise ObjectNotFoundError("Tag")
 
+        old_name = tag.name
+
         try:
             update_data = tag_data.model_dump(exclude_unset=True)
             for k, v in update_data.items():
-                setattr(tag, k, v)
+                if hasattr(tag, k):
+                    setattr(tag, k, v)
 
+            await db.flush()
             await db.commit()
-            await db.refresh(tag)
-            return tag
+
+            res = await db.execute(select(Tags).where(Tags.id == tag_id))
+            return res.scalar_one()
+
+        except IntegrityError:
+            await db.rollback()
+            new_name = update_data.get("name") or old_name
+            raise ConflictError(
+                message=f"Update failed. Tag name '{new_name}' is already taken."
+            )
         except Exception as e:
             await db.rollback()
-            raise ValidationError(f"Failed to update tag '{tag.name}'") from e
+            if isinstance(e, ConflictError):
+                raise e
+            raise ValidationError(f"Failed to update tag '{old_name}'") from e
 
 
 @router.delete(

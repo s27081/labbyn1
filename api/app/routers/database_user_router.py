@@ -9,12 +9,12 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
-    HTTPException,
     Response,
     UploadFile,
     status,
 )
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from app.auth.dependencies import RequestContext
@@ -103,13 +103,6 @@ async def create_user(
     """
     ctx.require_group_admin()
 
-    stmt = select(User).where(
-        or_(User.login == user_data.login, User.email == user_data.email)
-    )
-    result = await db.execute(stmt)
-    if result.scalar_one_or_none():
-        raise ConflictError(f"User '{result.login}' already exists.")
-
     if not ctx.is_admin and user_data.user_type == UserType.ADMIN:
         raise AccessDeniedError("Only system admins can create other admin users.")
 
@@ -128,6 +121,7 @@ async def create_user(
 
     try:
         db.add(new_user)
+
         await db.flush()
 
         target_teams = user_data.team_ids or []
@@ -161,9 +155,16 @@ async def create_user(
             "version_id": new_user.version_id,
         }
 
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            message=f"User with login '{user_data.login}' or email '{user_data.email}' already exists."
+        )
     except Exception as e:
         await db.rollback()
-        raise ValidationError(f"Could not create user '{new_user.login}'") from e
+        if isinstance(e, (AccessDeniedError, ConflictError, ValidationError)):
+            raise e
+        raise ValidationError(f"Could not create user '{user_data.login}'") from e
 
 
 @router.get("/users/list_info", response_model=List[UserInfo])
@@ -237,23 +238,30 @@ async def update_user(
     :return: Updated User.
     """
     async with acquire_lock(f"user_lock:{user_id}"):
-        stmt = select(User).options(joinedload(User.teams)).where(User.id == user_id)
+        stmt = (
+            select(User)
+            .options(joinedload(User.teams).joinedload(UsersTeams.team))
+            .where(User.id == user_id)
+        )
         result = await db.execute(stmt)
         user = result.unique().scalar_one_or_none()
 
         if not user:
-            raise ObjectNotFoundError("User")
+            raise ObjectNotFoundError("User", name=str(user_id))
 
         user_team_ids = {m.team_id for m in user.teams}
         if not ctx.is_admin and not any(tid in ctx.team_ids for tid in user_team_ids):
-            raise HTTPException(403, detail="Access denied to user from another team")
+            raise AccessDeniedError(f"Access denied to update user '{user.login}'")
 
         data = user_data.model_dump(exclude_unset=True)
 
         if not ctx.is_admin:
             if "user_type" in data and data["user_type"] == UserType.ADMIN:
-                raise AccessDeniedError(f"Access denied to update user '{user.login}'")
+                raise AccessDeniedError(
+                    f"Access denied to update user '{user.login}' to ADMIN"
+                )
             data.pop("team_ids", None)
+
         try:
             if "password" in data:
                 user.hashed_password = hash_password(data.pop("password"))
@@ -262,18 +270,17 @@ async def update_user(
                 await db.execute(
                     delete(UsersTeams).where(UsersTeams.user_id == user.id)
                 )
-                db.add_all(
-                    [
-                        UsersTeams(user_id=user.id, team_id=t_id)
-                        for t_id in data.pop("team_ids")
-                    ]
-                )
+                new_team_ids = data.pop("team_ids")
+                for t_id in new_team_ids:
+                    db.add(UsersTeams(user_id=user.id, team_id=t_id))
+
                 user.teams = []
 
             for k, v in data.items():
                 if hasattr(user, k):
                     setattr(user, k, v)
 
+            await db.flush()
             await db.commit()
 
             stmt_final = (
@@ -281,10 +288,22 @@ async def update_user(
                 .options(joinedload(User.teams).joinedload(UsersTeams.team))
                 .where(User.id == user_id)
             )
-            user = (await db.execute(stmt_final)).unique().scalar_one()
-            return get_masked_user_model(user, ctx, detailed=True)
+            refresh_result = await db.execute(stmt_final)
+            user_refreshed = refresh_result.unique().scalar_one()
+
+            return get_masked_user_model(user_refreshed, ctx, detailed=True)
+
+        except IntegrityError:
+            await db.rollback()
+            conflict_login = user_data.login if user_data.login else "this user"
+            raise ConflictError(
+                message=f"Update failed. Login or email for '{conflict_login}' is already taken."
+            )
         except Exception as e:
             await db.rollback()
+            if isinstance(e, (AccessDeniedError, ObjectNotFoundError, ConflictError)):
+                raise e
+            print(f"Update User Error: {str(e)}")
             raise ValidationError(f"Failed to update user '{user.login}'") from e
 
 

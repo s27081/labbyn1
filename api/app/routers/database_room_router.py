@@ -4,14 +4,12 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.auth.dependencies import RequestContext
-from app.core.exceptions import (
-    ObjectNotFoundError,
-    ValidationError,
-)
+from app.core.exceptions import ObjectNotFoundError, ValidationError, ConflictError
 from app.database import get_async_db
 from app.db.models import Rack, Rooms, Shelf, Tags
 from app.db.schemas import (
@@ -73,6 +71,11 @@ async def create_room(
             .options(selectinload(Rooms.tags), selectinload(Rooms.team))
         )
         return (await db.execute(stmt)).scalar_one()
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            message=f"Room with name '{room_data.name}' already exists for this team."
+        )
     except Exception as e:
         await db.rollback()
         raise ValidationError(f"Failed to create room '{room_data.name}'") from e
@@ -273,6 +276,11 @@ async def update_room(
             await db.commit()
             await db.refresh(room, attribute_names=["team", "racks"])
             return room
+        except IntegrityError:
+            await db.rollback()
+            raise ConflictError(
+                message=f"Conflict: Room name '{room.name}' is already taken in this team."
+            )
         except Exception as e:
             raise ValidationError(f"Failed to update room '{room.name}'") from e
 

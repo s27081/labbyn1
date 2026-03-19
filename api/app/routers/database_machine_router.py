@@ -5,14 +5,12 @@ from typing import List
 
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
-from app.core.exceptions import (
-    ObjectNotFoundError,
-    ValidationError,
-)
+from app.core.exceptions import ObjectNotFoundError, ValidationError, ConflictError
 from app.database import get_async_db
 from app.db.models import CPUs, Disks, Machines, Metadata, Shelf
 from app.db.schemas import (
@@ -73,6 +71,11 @@ async def create_machine(
             ],
         )
         return obj
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            message=f"Machine with name '{machine_data.name}' already exists in this room."
+        )
     except Exception as e:
         await db.rollback()
         raise ValidationError(f"Failed to create machine '{machine_data.name}'") from e
@@ -338,6 +341,13 @@ async def update_machine(
 
         try:
             await db.commit()
+
+        except IntegrityError:
+            await db.rollback()
+            raise ConflictError(
+                message=f"Conflict: Machine name '{machine.name}' is already taken in the target room."
+            )
+
         except Exception as e:
             await db.rollback()
             raise ValidationError(f"Failed to update machine '{machine.name}'") from e
@@ -432,7 +442,7 @@ async def mount_machine(
             return {
                 "status": "success",
                 "message": f"Machine {m_name} mounted on "
-                           f"shelf {s_name} (Rack: {r_name})",
+                f"shelf {s_name} (Rack: {r_name})",
             }
         except Exception as e:
             await db.rollback()
