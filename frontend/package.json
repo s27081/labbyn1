@@ -57,6 +57,7 @@
     "react-dom": "^19.2.0",
     "react-dropzone": "^14.4.0",
     "react-markdown": "^10.1.0",
+    "react-use-websocket": "^4.13.0",
     "remark-gfm": "^4.0.1",
     "remark-github-blockquote-alert": "^2.0.0",
     "serve": "^14.2.5",

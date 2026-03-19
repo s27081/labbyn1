@@ -49,6 +49,7 @@ import { labsBaseQueryOptions } from '@/integrations/labs/labs.query'
 import { racksBaseListQueryOptions } from '@/integrations/racks/racks.query'
 import { singleShelfQueryOptions } from '@/integrations/shelves/shelves.query'
 import { useCreateShelfMutation } from '@/integrations/shelves/shelves.mutation'
+import { PlatformWebsocket } from '@/components/platform-websocket'
 
 export const Route = createFileRoute('/_auth/machines/$machineId')({
   component: MachineDetailsPage,
@@ -168,6 +169,9 @@ function MachineDetailsPage() {
       }}
       content={
         <>
+          {machine.monitoring && (
+            <PlatformWebsocket instance={machine.ip_address} />
+          )}
           <AutoDiscovertDialog
             machineId={machineId}
             machineHostname={machine.name}

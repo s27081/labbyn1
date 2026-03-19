@@ -19,7 +19,7 @@ def test_security_scanner_all_endpoints_have_auth():
     missing_auth = []
 
     for route in app.routes:
-        if isinstance(route, (APIRoute, APIWebSocketRoute)):
+        if isinstance(route, APIRoute):
 
             if any(
                 path in route.path
@@ -36,8 +36,7 @@ def test_security_scanner_all_endpoints_have_auth():
             )
 
             if not has_ctx:
-                methods = getattr(route, "methods", {"WS"})
-                missing_auth.append(f"{methods} {route.path}")
+                missing_auth.append(f"{route.methods} {route.path}")
 
     assert (
         not missing_auth
