@@ -8,7 +8,6 @@ from urllib.parse import unquote
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
@@ -16,9 +15,13 @@ from starlette import status
 from app.auth.auth_config import get_database_strategy
 from app.auth.dependencies import RequestContext
 from app.auth.manager import get_user_manager
+from app.core.exceptions import (
+    ValidationError,
+)
 
 from ..database import get_async_db
 from ..db.models import Machines
+from ..db.schemas import PrometheusTarget
 from ..utils.prometheus_service import (
     DEFAULT_QUERIES,
     TargetSaveError,
@@ -59,13 +62,6 @@ class WSConnectionManager:
     def disconnect(self):
         """Disconnect the websocket connection."""
         self.websocket = None
-
-
-class PrometheusTarget(BaseModel):
-    """Pydantic model for Prometheus target."""
-
-    instance: str
-    labels: dict
 
 
 manager = WSConnectionManager()
@@ -334,5 +330,5 @@ async def add_prometheus_new_target(
             target.instance = f"{target.instance}:9100"
         entry = await add_prometheus_target(target.instance, target.labels)
     except TargetSaveError as e:
-        return {"error": str(e)}
+        raise ValidationError(f"Failed to save target '{target.instance}'") from e
     return {"message": "Target added successfully", "target": entry}

@@ -3,12 +3,14 @@
 import json
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import ObjectNotFoundError, ValidationError, ConflictError
 from app.database import get_async_db
 from app.db.models import CPUs, Disks, Machines, Metadata, Shelf
 from app.db.schemas import (
@@ -17,7 +19,6 @@ from app.db.schemas import (
     MachinesResponse,
     MachinesUpdate,
 )
-from app.utils.database_service import resolve_target_team_id
 from app.utils.redis_service import acquire_lock, get_cache
 
 router = APIRouter(prefix="/db", tags=["Machines"])
@@ -44,25 +45,40 @@ async def create_machine(
     cpus = machine_data.cpus or []
     disks = machine_data.disks or []
     data = machine_data.model_dump(exclude={"cpus", "disks"})
-    data["team_id"] = resolve_target_team_id(ctx, data.get("team_id"))
+    await ctx.validate_team_access(data["team_id"])
+    try:
+        if not data.get("metadata_id"):
+            new_metadata = Metadata()
+            db.add(new_metadata)
+            await db.flush()
+            data["metadata_id"] = new_metadata.id
 
-    if not data.get("metadata_id"):
-        new_metadata = Metadata()
-        db.add(new_metadata)
-        await db.flush()
-        data["metadata_id"] = new_metadata.id
+        obj = Machines(**data)
+        obj.cpus = [CPUs(name=item.name) for item in cpus]
+        obj.disks = [Disks(name=item.name) for item in disks]
 
-    obj = Machines(**data)
-    obj.cpus = [CPUs(name=item.name) for item in cpus]
-    obj.disks = [Disks(name=item.name) for item in disks]
-
-    db.add(obj)
-    await db.commit()
-    await db.refresh(
-        obj,
-        attribute_names=["team", "room", "machine_metadata", "shelf", "cpus", "disks"],
-    )
-    return obj
+        db.add(obj)
+        await db.commit()
+        await db.refresh(
+            obj,
+            attribute_names=[
+                "team",
+                "room",
+                "machine_metadata",
+                "shelf",
+                "cpus",
+                "disks",
+            ],
+        )
+        return obj
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            message=f"Machine with name '{machine_data.name}' already exists in this room."
+        )
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(f"Failed to create machine '{machine_data.name}'") from e
 
 
 @router.get("/machines/", response_model=List[MachinesResponse])
@@ -117,10 +133,7 @@ async def get_machine_by_id(
     machine = result.unique().scalar_one_or_none()
 
     if not machine:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Machine not found or access denied",
-        )
+        raise ObjectNotFoundError("Machine")
     return machine
 
 
@@ -158,7 +171,7 @@ async def get_machine_full_detail(
     machine = result.unique().scalar_one_or_none()
 
     if not machine:
-        raise HTTPException(status_code=404, detail="Machine not found")
+        raise ObjectNotFoundError("Machine")
 
     status_data = await get_cache("prometheus_metrics_cache")
     metrics_data = await get_cache("prometheus_other_metrics_cache")
@@ -269,10 +282,7 @@ async def update_machine(
         machine = result.scalar_one_or_none()
 
         if not machine:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Machine not found or access denied",
-            )
+            raise ObjectNotFoundError("Machine")
 
         update_data = machine_data.model_dump(exclude_unset=True)
         if "shelf_id" in update_data and (
@@ -280,12 +290,7 @@ async def update_machine(
         ):
             update_data["shelf_id"] = None
         if "team_id" in update_data and not ctx.is_admin:
-            if update_data["team_id"] not in ctx.team_ids:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have permission to assign this machine "
-                    "to the specified team",
-                )
+            await ctx.validate_team_access(update_data["team_id"])
 
         if "cpus" in update_data:
             updated_cpus = update_data.pop("cpus")
@@ -336,9 +341,16 @@ async def update_machine(
 
         try:
             await db.commit()
+
+        except IntegrityError:
+            await db.rollback()
+            raise ConflictError(
+                message=f"Conflict: Machine name '{machine.name}' is already taken in the target room."
+            )
+
         except Exception as e:
             await db.rollback()
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            raise ValidationError(f"Failed to update machine '{machine.name}'") from e
 
         await db.refresh(
             machine,
@@ -371,12 +383,14 @@ async def delete_machine(
         machine = result.scalar_one_or_none()
 
         if not machine:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Machine not found or access denied",
-            )
-        await db.delete(machine)
-        await db.commit()
+            raise ObjectNotFoundError("Machine")
+        try:
+            await db.delete(machine)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Could not delete machine '{machine.name}'") from e
 
 
 @router.post("/machines/{machine_id}/mount/{shelf_id}", status_code=status.HTTP_200_OK)
@@ -402,9 +416,7 @@ async def mount_machine(
         machine = machine_res.scalar_one_or_none()
 
         if not machine:
-            raise HTTPException(
-                status_code=404, detail="Machine not found or access denied"
-            )
+            raise ObjectNotFoundError("Machine")
 
         shelf_stmt = (
             select(Shelf).filter(Shelf.id == shelf_id).options(joinedload(Shelf.rack))
@@ -413,24 +425,31 @@ async def mount_machine(
         shelf = shelf_res.scalar_one_or_none()
 
         if not shelf:
-            raise HTTPException(status_code=404, detail="Target shelf not found")
+            raise ObjectNotFoundError("Target shelf")
 
-        if not ctx.is_admin:
-            if shelf.rack.team_id not in ctx.team_ids:
-                raise HTTPException(
-                    status_code=403,
-                    detail="You don't have permission to use this rack/shelf",
-                )
+        await ctx.validate_team_access(shelf.rack.team_id)
 
-        machine.shelf_id = shelf_id
-        machine.localization_id = shelf.rack.room_id
+        try:
+            m_name = machine.name
+            s_name = shelf.name
+            r_name = shelf.rack.name
 
-        await db.commit()
-        return {
-            "status": "success",
-            "message": f"Machine {machine.name} mounted on shelf {shelf.name} "
-            f"(Rack: {shelf.rack.name})",
-        }
+            machine.shelf_id = shelf_id
+            machine.localization_id = shelf.rack.room_id
+
+            await db.commit()
+
+            return {
+                "status": "success",
+                "message": f"Machine {m_name} mounted on "
+                f"shelf {s_name} (Rack: {r_name})",
+            }
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Failed to mount machine '{machine.name} on "
+                f"shelf {s_name} (Rack: {r_name})'"
+            ) from e
 
 
 @router.post("/machines/{machine_id}/unmount", status_code=status.HTTP_200_OK)
@@ -448,21 +467,31 @@ async def unmount_machine(
     """
     ctx.require_user()
 
-    stmt = select(Machines).filter(Machines.id == machine_id)
+    stmt = (
+        select(Machines)
+        .filter(Machines.id == machine_id)
+        .options(joinedload(Machines.shelf).joinedload(Shelf.rack))
+    )
     stmt = ctx.team_filter(stmt, Machines)
     result = await db.execute(stmt)
     machine = result.scalar_one_or_none()
 
     if not machine:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Machine not found or access denied",
+        raise ObjectNotFoundError("Machine")
+
+    try:
+        info = (
+            f"Machine {machine.name} unmounted from shelf {machine.shelf.name} "
+            f"(Rack: {machine.shelf.rack.name})"
+            if machine.shelf
+            else f"Machine {machine.name} unmounted"
         )
 
-    machine.shelf_id = None
+        machine.shelf_id = None
 
-    await db.commit()
-    return {
-        "status": "success",
-        "message": f"Machine {machine.name} has been unmounted.",
-    }
+        await db.commit()
+        return {"status": "success", "message": info}
+
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(f"Failed to unmount machine '{machine.name}'") from e

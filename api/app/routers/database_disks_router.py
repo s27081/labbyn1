@@ -2,11 +2,13 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import AccessDeniedError, ObjectNotFoundError, ValidationError
 from app.database import get_async_db
 from app.db.models import Disks, Machines
 from app.db.schemas import DiskCreate, DiskResponse, DiskUpdate
@@ -32,11 +34,12 @@ async def create_disk(
     :param ctx: Request context for user and team info
     :return: Disk object.
     """
+    ctx.require_user()
+
     if not ctx.is_admin:
         if not getattr(disk_data, "machine_id", None):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Non-admin users must attach disks to a specific machine.",
+            raise AccessDeniedError(
+                "Non-admin users must attach disks to a specific machine."
             )
 
     stmt = select(Machines).where(Machines.id == disk_data.machine_id)
@@ -45,16 +48,19 @@ async def create_disk(
     machine = result.scalar_one_or_none()
 
     if not machine:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Target machine not found or access denied.",
-        )
+        raise ObjectNotFoundError("Machine for this disk")
 
-    obj = Disks(**disk_data.model_dump())
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj)
-    return obj
+    try:
+        obj = Disks(**disk_data.model_dump())
+        db.add(obj)
+        await db.commit()
+        await db.refresh(obj)
+        return obj
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(
+            f"Failed to add disk '{disk_data.name}' to machine '{machine.name}'"
+        ) from e
 
 
 @router.get("/disks/", response_model=List[DiskResponse])
@@ -95,9 +101,7 @@ async def get_disk_by_id(
     disk = result.scalar_one_or_none()
 
     if not disk:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Disk not found"
-        )
+        raise ObjectNotFoundError("Disk")
     return disk
 
 
@@ -118,20 +122,30 @@ async def update_disk(
     """
     ctx.require_user()
     async with acquire_lock(f"disk_lock:{disk_id}"):
-        stmt = select(Disks).join(Machines).filter(Disks.id == disk_id)
+        stmt = (
+            select(Disks)
+            .options(selectinload(Disks.machine))
+            .join(Machines)
+            .filter(Disks.id == disk_id)
+        )
         stmt = ctx.team_filter(stmt, Machines)
         result = await db.execute(stmt)
         disk = result.scalar_one_or_none()
 
         if not disk:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Disk not found"
-            )
-        for k, v in disk_data.model_dump(exclude_unset=True).items():
-            setattr(disk, k, v)
-        await db.commit()
-        await db.refresh(disk)
-        return disk
+            raise ObjectNotFoundError("Disk")
+
+        try:
+            for k, v in disk_data.model_dump(exclude_unset=True).items():
+                setattr(disk, k, v)
+            await db.commit()
+            await db.refresh(disk)
+            return disk
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Update failed for disk '{disk.name}' on {disk.machine.name}"
+            ) from e
 
 
 @router.delete(
@@ -152,14 +166,25 @@ async def delete_disk(
     """
     ctx.require_user()
     async with acquire_lock(f"disk_lock:{disk_id}"):
-        stmt = select(Disks).join(Machines).filter(Disks.id == disk_id)
+        stmt = (
+            select(Disks)
+            .options(selectinload(Disks.machine))
+            .join(Machines)
+            .filter(Disks.id == disk_id)
+        )
         stmt = ctx.team_filter(stmt, Machines)
         result = await db.execute(stmt)
         disk = result.scalar_one_or_none()
 
         if not disk:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Disk not found"
-            )
-        await db.delete(disk)
-        await db.commit()
+            raise ObjectNotFoundError("Disk")
+
+        try:
+            await db.delete(disk)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Could not delete disk '{disk.name}' from {disk.machine.name}"
+            ) from e

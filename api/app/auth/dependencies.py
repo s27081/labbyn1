@@ -1,12 +1,13 @@
 """Configuration of team and role filtering access."""
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.auth_config import fastapi_users
+from app.core.exceptions import AccessDeniedError, ObjectNotFoundError
 from app.database import get_async_db
-from app.db.models import User, UsersTeams, UserType
+from app.db.models import Teams, User, UsersTeams, UserType
 
 current_active_user = fastapi_users.current_user(active=True)
 
@@ -108,31 +109,44 @@ class RequestContext:
     def require_admin(self):
         """Enforces that the current user has admin privileges.
 
-        Raises HTTP 403 if not.
+        Raises AccessDeniedError if not.
         """
         if not self.is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin privileges required.",
-            )
+            raise AccessDeniedError("Admin privileges required")
 
     def require_group_admin(self):
         """Enforces that the current user has group admin privileges.
 
-        Raises HTTP 403 if not.
+        Raises AccessDeniedError if not.
         """
         if not (self.is_admin or self.is_group_admin):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Group admin privileges required.",
-            )
+            raise AccessDeniedError("Group Admin privileges required")
 
     def require_user(self):
         """Enforces that the current user has at least user privileges.
 
-        Raises HTTP 403 if not.
+        Raises AccessDeniedError if not.
         """
         if not (self.is_admin or self.is_group_admin or self.is_user):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Access denied."
+            raise AccessDeniedError("Access denied")
+
+    async def validate_team_access(self, team_id: int):
+        """Validate if user has access to team-restricted resources.
+
+        :param team_id: Team Id
+        :return: AccessDenied error
+        """
+        if self.is_admin:
+            return
+
+        if team_id not in self.team_ids:
+            stmt = select(Teams.name).where(Teams.id == team_id)
+            result = await self.db.execute(stmt)
+            team_name = result.scalar_one_or_none()
+
+            if not team_name:
+                raise ObjectNotFoundError("Team")
+
+            raise AccessDeniedError(
+                f"Insufficient permissions " f"to manage items for team '{team_name}'"
             )

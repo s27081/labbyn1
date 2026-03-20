@@ -2,12 +2,15 @@
 
 from typing import Any, Dict, List, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import (
+    ObjectNotFoundError,
+)
 from app.database import get_async_db
 from app.db.models import History, User
 from app.db.schemas import HistoryResponse
@@ -162,9 +165,7 @@ async def get_blackboxed_history_item(
     log_entry = result.unique().scalar_one_or_none()
 
     if not log_entry:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="History not found"
-        )
+        raise ObjectNotFoundError("History log")
 
     clean_before, clean_after = get_state_diff(
         log_entry.before_state, log_entry.after_state

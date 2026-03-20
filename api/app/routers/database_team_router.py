@@ -2,12 +2,17 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import (
+    AccessDeniedError,
+    ObjectNotFoundError,
+    ValidationError,
+)
 from app.database import get_async_db
 from app.db.models import Inventory, Machines, Rack, Rooms, Shelf, Teams, UsersTeams
 from app.db.schemas import (
@@ -191,16 +196,20 @@ async def create_team(
     :return: Team object.
     """
     ctx.require_admin()
-    obj = Teams(**team_data.model_dump())
-    db.add(obj)
-    await db.flush()
+    try:
+        obj = Teams(**team_data.model_dump())
+        db.add(obj)
+        await db.flush()
 
-    virtual_lab = Rooms(name="virtual", room_type="virtual", team_id=obj.id)
-    db.add(virtual_lab)
+        virtual_lab = Rooms(name="virtual", room_type="virtual", team_id=obj.id)
+        db.add(virtual_lab)
 
-    await db.commit()
-    await db.refresh(obj)
-    return obj
+        await db.commit()
+        await db.refresh(obj)
+        return obj
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(f"Failed to create team '{team_data.name}'") from e
 
 
 @router.get("/teams", response_model=List[TeamsResponse])
@@ -300,33 +309,37 @@ async def update_team(
     :param db: Active database session
     :return: Updated Team.
     """
-    if not ctx.is_admin:
-        ctx.require_group_admin()
-        stmt_check = select(UsersTeams).filter(
-            UsersTeams.user_id == ctx.current_user.id,
-            UsersTeams.team_id == team_id,
-            UsersTeams.is_group_admin,
-        )
-        res_check = await db.execute(stmt_check)
-        if not res_check.scalar_one_or_none():
-            raise HTTPException(
-                status_code=403, detail="You are not an admin of this team"
-            )
+    ctx.require_user()
 
     async with acquire_lock(f"team_lock:{team_id}"):
         stmt = select(Teams).filter(Teams.id == team_id)
-        result = await db.execute(stmt)
-        team = result.scalar_one_or_none()
+        team = (await db.execute(stmt)).scalar_one_or_none()
 
         if not team:
-            raise HTTPException(404, detail="Team not found")
+            raise ObjectNotFoundError("Team", id=team_id)
 
-        for k, v in team_data.model_dump(exclude_unset=True).items():
-            setattr(team, k, v)
+        team_name = team.name
 
-        await db.commit()
-        await db.refresh(team)
-        return team
+        if not ctx.is_admin:
+            ctx.require_group_admin()
+            stmt_check = select(UsersTeams).filter(
+                UsersTeams.user_id == ctx.current_user.id,
+                UsersTeams.team_id == team_id,
+                UsersTeams.is_group_admin.is_(True),
+            )
+            if not (await db.execute(stmt_check)).scalar_one_or_none():
+                raise AccessDeniedError(f"You are not an admin of team '{team_name}'")
+
+        try:
+            for k, v in team_data.model_dump(exclude_unset=True).items():
+                setattr(team, k, v)
+
+            await db.commit()
+            await db.refresh(team)
+            return team
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Failed to update team '{team_name}'") from e
 
 
 @router.delete("/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -348,9 +361,12 @@ async def delete_team(
         team = result.scalar_one_or_none()
 
         if not team:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
-            )
+            raise ObjectNotFoundError("Team")
 
-        await db.delete(team)
-        await db.commit()
+        try:
+            await db.delete(team)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Could not delete team '{team.name}'") from e

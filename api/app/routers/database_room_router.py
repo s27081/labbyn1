@@ -2,12 +2,14 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import ObjectNotFoundError, ValidationError, ConflictError
 from app.database import get_async_db
 from app.db.models import Rack, Rooms, Shelf, Tags
 from app.db.schemas import (
@@ -17,7 +19,6 @@ from app.db.schemas import (
     RoomsResponse,
     RoomsUpdate,
 )
-from app.utils.database_service import resolve_target_team_id
 from app.utils.redis_service import acquire_lock
 
 router = APIRouter(prefix="/db", tags=["Rooms"])
@@ -41,23 +42,43 @@ async def create_room(
     :return: Room object.
     """
     ctx.require_group_admin()
-    tag_ids = room_data.tag_ids if hasattr(room_data, "tag_ids") else []
 
-    effective_team_id = resolve_target_team_id(ctx, getattr(room_data, "team_id", None))
-
-    obj = Rooms(
-        name=room_data.name, room_type=room_data.room_type, team_id=effective_team_id
+    target_team_id = room_data.team_id or (
+        ctx.team_ids[0] if len(ctx.team_ids) == 1 else None
     )
+    if not target_team_id:
+        raise ValidationError("Target team ID is required to create a room")
 
-    if tag_ids:
-        tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
-        tag_res = await db.execute(tag_stmt)
-        obj.tags = tag_res.scalars().all()
+    await ctx.validate_team_access(target_team_id)
 
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj, attribute_names=["team", "racks", "tags"])
-    return obj
+    try:
+        obj = Rooms(
+            name=room_data.name, room_type=room_data.room_type, team_id=target_team_id
+        )
+
+        if room_data.tag_ids:
+            tag_res = await db.execute(
+                select(Tags).where(Tags.id.in_(room_data.tag_ids))
+            )
+            obj.tags = list(tag_res.scalars().all())
+
+        db.add(obj)
+        await db.commit()
+
+        stmt = (
+            select(Rooms)
+            .where(Rooms.id == obj.id)
+            .options(selectinload(Rooms.tags), selectinload(Rooms.team))
+        )
+        return (await db.execute(stmt)).scalar_one()
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            message=f"Room with name '{room_data.name}' already exists for this team."
+        )
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(f"Failed to create room '{room_data.name}'") from e
 
 
 @router.get("/rooms", response_model=List[RoomsResponse])
@@ -206,9 +227,7 @@ async def get_room_by_id(
     room = result.scalar_one_or_none()
 
     if not room:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Room not found"
-        )
+        raise ObjectNotFoundError("Room")
     return room
 
 
@@ -237,33 +256,33 @@ async def update_room(
         room = result.scalar_one_or_none()
 
         if not room:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Room not found or access denied",
-            )
+            raise ObjectNotFoundError("Room", id=room_id)
 
         update_data = room_data.model_dump(exclude_unset=True)
+        try:
+            if "tag_ids" in update_data:
+                tag_ids = update_data.pop("tag_ids")
+                if tag_ids is not None:
+                    tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
+                    tag_res = await db.execute(tag_stmt)
+                    room.tags = tag_res.scalars().all()
 
-        if "tag_ids" in update_data:
-            tag_ids = update_data.pop("tag_ids")
-            if tag_ids is not None:
-                tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
-                tag_res = await db.execute(tag_stmt)
-                room.tags = tag_res.scalars().all()
+            if "team_id" in update_data:
+                await ctx.validate_team_access(update_data["team_id"])
 
-        if "team_id" in update_data and not ctx.is_admin:
-            if update_data["team_id"] not in ctx.team_ids:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Cannot assign room to a team you don't belong to",
-                )
+            for k, v in update_data.items():
+                setattr(room, k, v)
 
-        for k, v in update_data.items():
-            setattr(room, k, v)
-
-        await db.commit()
-        await db.refresh(room, attribute_names=["team", "racks"])
-        return room
+            await db.commit()
+            await db.refresh(room, attribute_names=["team", "racks"])
+            return room
+        except IntegrityError:
+            await db.rollback()
+            raise ConflictError(
+                message=f"Conflict: Room name '{room.name}' is already taken in this team."
+            )
+        except Exception as e:
+            raise ValidationError(f"Failed to update room '{room.name}'") from e
 
 
 @router.delete("/rooms/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -289,10 +308,12 @@ async def delete_room(
         room = result.scalar_one_or_none()
 
         if not room:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Room not found or access denied",
-            )
+            raise ObjectNotFoundError("Room")
 
-        await db.delete(room)
-        await db.commit()
+        try:
+            await db.delete(room)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Could not delete room '{room.name}'") from e

@@ -6,7 +6,11 @@ import os
 import time
 
 import ansible_runner
-from fastapi import HTTPException
+
+from app.core.exceptions import (
+    ObjectNotFoundError,
+    ValidationError,
+)
 
 REPORTS_DIR = "/code/ansible/platform_reports"
 PLAYBOOK_DIR = "/code/ansible"
@@ -22,7 +26,7 @@ def parse_platform_report(hostname: str) -> dict:
     report_path = os.path.join(REPORTS_DIR, f"{hostname}-platform-info.json")
 
     if not os.path.exists(report_path):
-        raise FileNotFoundError(f"Report not found for {hostname} at {report_path}")
+        raise ObjectNotFoundError("Platform report", name=hostname)
 
     time.sleep(1)
     try:
@@ -75,7 +79,9 @@ def parse_platform_report(hostname: str) -> dict:
         }
 
     except Exception as e:
-        raise ValueError(f"Error parsing report for {hostname}: {str(e)}") from e
+        raise ValidationError(
+            f"Error parsing platform report for host '{hostname}'"
+        ) from e
 
 
 async def run_playbook_task(playbook_path: str, host: str | list, extra_vars: dict):
@@ -92,6 +98,7 @@ async def run_playbook_task(playbook_path: str, host: str | list, extra_vars: di
         hosts_list = host
 
     host_dict = {"all": {"hosts": {h: {} for h in hosts_list}}}
+    hosts_display = ", ".join(hosts_list)
 
     def _run():
         return ansible_runner.run(
@@ -103,16 +110,14 @@ async def run_playbook_task(playbook_path: str, host: str | list, extra_vars: di
     try:
         r = await asyncio.to_thread(_run)
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to execute Ansible runner: {e}"
+        raise ValidationError(
+            f"Failed to initialize Ansible runner for hosts '{hosts_display}'"
         ) from e
+
     if r.rc != 0 or r.status != "successful":
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": "Ansible playbook execution failed",
-                "status": r.status,
-                "rc": r.rc,
-            },
+        playbook_name = os.path.basename(playbook_path)
+        raise ValidationError(
+            f"Ansible task '{playbook_name}' failed for hosts: {hosts_display}. "
+            f"Status: {r.status}, Return Code: {r.rc}"
         )
     return {"status": r.status, "rc": r.rc}

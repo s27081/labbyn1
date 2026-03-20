@@ -121,7 +121,10 @@ async def test_refresh_flow(
     )
 
     assert response.status_code == 200
-    assert response.json()["message"] == "Updated successfully"
+    assert (
+        response.json()["message"]
+        == "Hardware for 192.168.1.100 refreshed successfully"
+    )
 
     db_session.expire_all()
 

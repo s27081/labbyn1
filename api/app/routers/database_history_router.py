@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import ObjectNotFoundError, ValidationError
 from app.database import get_async_db
 from app.db.models import (
     ActionType,
@@ -221,9 +222,8 @@ async def get_history_by_id(
     history = result.unique().scalar_one_or_none()
 
     if not history:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="History not found"
-        )
+        raise ObjectNotFoundError("History")
+
     return history
 
 
@@ -254,19 +254,14 @@ async def rollback_history_entry(
     log_entry = result.scalar_one_or_none()
 
     if not log_entry:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="History not found"
-        )
+        raise ObjectNotFoundError("History")
+
     if not log_entry.can_rollback:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Cannot rollback"
-        )
+        raise ValidationError("This specific action cannot be rolled back")
 
     model_class = get_model_class(log_entry.entity_type)
     if not model_class:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Entity type not found"
-        )
+        raise ObjectNotFoundError("Entity model")
 
     try:
         msg = ""
@@ -282,11 +277,7 @@ async def rollback_history_entry(
 
     except IntegrityError as e:
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Entity already exists"
-        ) from e
+        raise ValidationError("Rollback failed: Conflict with existing data") from e
     except Exception as e:
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        ) from e
+        raise ValidationError("Rollback operation failed") from e

@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 import fastapi_users
 from fastapi import FastAPI
+from app.core.handlers import setup_exception_handlers
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -68,7 +69,8 @@ async def lifespan(fast_api_app: FastAPI):  # pylint: disable=unused-argument
         await asyncio.gather(status_task, metrics_task, return_exceptions=True)
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title="Labbyn API", lifespan=lifespan)
+setup_exception_handlers(app)
 
 # Mount static files for user avatars
 if not os.path.exists(database_user_router.AVATAR_DIR):

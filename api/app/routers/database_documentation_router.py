@@ -2,12 +2,14 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import ObjectNotFoundError, ValidationError, ConflictError
 from app.database import get_async_db
 from app.db.models import Documentation, Tags
 from app.db.schemas import (
@@ -61,20 +63,40 @@ async def create_documentation(
     current_author = ctx.current_user.login
     tag_ids = documentation_data.tag_ids or []
 
-    obj = Documentation(
-        **documentation_data.model_dump(exclude={"tag_ids"}), author=current_author
-    )
+    try:
+        obj = Documentation(
+            **documentation_data.model_dump(exclude={"tag_ids"}), author=current_author
+        )
 
-    if tag_ids:
-        tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
-        tag_result = await db.execute(tag_stmt)
-        obj.tags = tag_result.scalars().all()
+        if tag_ids:
+            tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
+            tag_result = await db.execute(tag_stmt)
+            obj.tags = list(tag_result.scalars().all())
 
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj)
-    await db.refresh(obj, attribute_names=["tags"])
-    return obj
+        db.add(obj)
+        await db.flush()
+        await db.commit()
+
+        stmt = (
+            select(Documentation)
+            .options(joinedload(Documentation.tags))
+            .where(Documentation.id == obj.id)
+        )
+        result = await db.execute(stmt)
+        return result.unique().scalar_one()
+
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            message=f"Document with title '{documentation_data.title}' already exists."
+        )
+    except Exception as e:
+        await db.rollback()
+        if isinstance(e, ConflictError):
+            raise e
+        raise ValidationError(
+            f"Could not create document: '{documentation_data.title}'"
+        ) from e
 
 
 @router.get(
@@ -103,9 +125,7 @@ async def get_documentation_by_id(
     document = result.unique().scalar_one_or_none()
 
     if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
-        )
+        raise ObjectNotFoundError("Document")
     return document
 
 
@@ -138,24 +158,45 @@ async def update_documentation(
         document = result.unique().scalar_one_or_none()
 
         if not document:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+            raise ObjectNotFoundError("Document")
+
+        old_title = document.title
+
+        try:
+            update_data = documentation_data.model_dump(exclude_unset=True)
+
+            if "tag_ids" in update_data:
+                tag_ids = update_data.pop("tag_ids")
+                tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
+                tag_result = await db.execute(tag_stmt)
+                document.tags = list(tag_result.scalars().all())
+
+            for k, v in update_data.items():
+                if hasattr(document, k):
+                    setattr(document, k, v)
+
+            await db.flush()
+            await db.commit()
+
+            final_stmt = (
+                select(Documentation)
+                .options(joinedload(Documentation.tags))
+                .where(Documentation.id == documentation_id)
             )
+            refresh_res = await db.execute(final_stmt)
+            return refresh_res.unique().scalar_one()
 
-        update_data = documentation_data.model_dump(exclude_unset=True)
-        if "tag_ids" in update_data:
-            tag_ids = update_data.pop("tag_ids")
-            tag_stmt = select(Tags).where(Tags.id.in_(tag_ids))
-            tag_result = await db.execute(tag_stmt)
-            document.tags = tag_result.scalars().all()
-
-        for k, v in update_data.items():
-            setattr(document, k, v)
-
-        await db.commit()
-        await db.refresh(document)
-        await db.refresh(document, attribute_names=["tags"])
-        return document
+        except IntegrityError:
+            await db.rollback()
+            new_title = documentation_data.title or old_title
+            raise ConflictError(
+                message=f"Update failed. Document title '{new_title}' is already taken."
+            )
+        except Exception as e:
+            await db.rollback()
+            if isinstance(e, ConflictError):
+                raise e
+            raise ValidationError(f"Failed to update document: '{old_title}'") from e
 
 
 @router.delete(
@@ -181,9 +222,11 @@ async def delete_document(
         document = result.scalar_one_or_none()
 
         if not document:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
-            )
-
-        await db.delete(document)
-        await db.commit()
+            raise ObjectNotFoundError("Document")
+        try:
+            await db.delete(document)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Could not delete document: {document.title}") from e

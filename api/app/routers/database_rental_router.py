@@ -3,11 +3,17 @@
 from datetime import date
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import (
+    InsufficientAmountError,
+    ObjectNotFoundError,
+    ValidationError,
+)
 from app.database import get_async_db
 from app.db.models import Inventory, Rentals
 from app.db.schemas import RentalReturn, RentalsCreate, RentalsResponse
@@ -45,7 +51,7 @@ async def create_rental(
         item = result.scalar_one_or_none()
 
         if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
+            raise ObjectNotFoundError("Item for this rental")
 
         sum_stmt = select(func.coalesce(func.sum(Rentals.quantity), 0)).filter(
             Rentals.item_id == item.id,
@@ -58,28 +64,30 @@ async def create_rental(
         in_stock = item.quantity - active_rentals_sum
 
         if rent_data.quantity > in_stock:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"You can't borrow more than: {in_stock}",
+            raise InsufficientAmountError(
+                requested=rent_data.quantity, available=in_stock
             )
 
-        rental = Rentals(
-            item_id=rent_data.item_id,
-            quantity=rent_data.quantity,
-            start_date=rent_data.start_date,
-            end_date=rent_data.end_date,
-            user_id=ctx.current_user.id,
-        )
+        try:
+            rental = Rentals(
+                item_id=rent_data.item_id,
+                quantity=rent_data.quantity,
+                start_date=rent_data.start_date,
+                end_date=rent_data.end_date,
+                user_id=ctx.current_user.id,
+            )
 
-        db.add(rental)
+            db.add(rental)
 
-        if in_stock - rent_data.quantity == 0:
-            item.rental_status = True
-            item.rental_id = None
+            if in_stock - rent_data.quantity == 0:
+                item.rental_status = True
 
-        await db.commit()
-        await db.refresh(rental)
-        return rental
+            await db.commit()
+            await db.refresh(rental)
+            return rental
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Failed to create rental for '{item.name}'") from e
 
 
 @router.post("/rentals/{rental_id}/return")
@@ -102,28 +110,19 @@ async def return_rental(
         select(Rentals)
         .join(Inventory, Rentals.item_id == Inventory.id)
         .filter(Rentals.id == rental_id)
+        .options(joinedload(Rentals.item))
     )
-    check_stmt = ctx.team_filter(check_stmt, Inventory)
-    check_res = await db.execute(check_stmt)
-    rental_check = check_res.scalar_one_or_none()
+    rental = (
+        await db.execute(ctx.team_filter(check_stmt, Inventory))
+    ).scalar_one_or_none()
 
-    if not rental_check:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Rental not found or access denied",
-        )
+    if not rental:
+        raise ObjectNotFoundError("Rental for this item")
 
-    item_id = rental_check.item_id
-
-    async with acquire_lock(f"inventory_lock:{item_id}"):
-        rent_stmt = select(Rentals).filter(Rentals.id == rental_id).with_for_update()
-        item_stmt = select(Inventory).filter(Inventory.id == item_id).with_for_update()
-
-        rent_res = await db.execute(rent_stmt)
-        rental = rent_res.scalar_one_or_none()
-
-        item_res = await db.execute(item_stmt)
-        item = item_res.scalar_one_or_none()
+    item = rental.item
+    async with acquire_lock(f"inventory_lock:{item.id}"):
+        await db.refresh(rental)
+        await db.refresh(item)
 
         qty_to_return = (
             return_data.quantity
@@ -132,27 +131,27 @@ async def return_rental(
         )
 
         if qty_to_return > rental.quantity:
-            raise HTTPException(
-                status_code=400,
-                detail=f"You can't return more than you borrowed: ({rental.quantity})",
+            raise InsufficientAmountError(
+                requested=qty_to_return, available=rental.quantity
             )
 
-        if qty_to_return == rental.quantity:
-            rental.end_date = date.today()
-            message = "Returned successfully (Full)"
-        else:
-            rental.quantity -= qty_to_return
-            message = (
-                f"Partially returned {qty_to_return} items. "
-                f"Remaining: {rental.quantity}"
-            )
+        try:
+            if qty_to_return == rental.quantity:
+                rental.end_date = date.today()
+                msg = f"Fully returned '{item.name}'"
+            else:
+                rental.quantity -= qty_to_return
+                msg = (
+                    f"Partially returned {qty_to_return}x "
+                    f"'{item.name}'. Remaining: {rental.quantity}"
+                )
 
-        if item:
             item.rental_status = False
-
-        await db.commit()
-
-    return {"message": message}
+            await db.commit()
+            return {"message": msg}
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Return failed for '{item.name}'") from e
 
 
 @router.get("/rentals", response_model=List[RentalsResponse])
@@ -197,10 +196,7 @@ async def get_rental_by_id(
     rental = result.scalar_one_or_none()
 
     if not rental:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Rental not found or access denied",
-        )
+        raise ObjectNotFoundError("Rental for this item")
     return rental
 
 
@@ -222,25 +218,27 @@ async def delete_rental(
         select(Rentals)
         .join(Inventory, Rentals.item_id == Inventory.id)
         .filter(Rentals.id == rental_id)
+        .options(joinedload(Rentals.item))
     )
     stmt = ctx.team_filter(stmt, Inventory)
     result = await db.execute(stmt)
     rental = result.scalar_one_or_none()
 
     if not rental:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Rental not found or access denied",
-        )
+        raise ObjectNotFoundError("Rental for this item")
 
     async with acquire_lock(f"inventory_lock:{rental.item_id}"):
-        item_stmt = select(Inventory).filter(Inventory.id == rental.item_id)
-        item_res = await db.execute(item_stmt)
-        item = item_res.scalar_one_or_none()
+        try:
+            item_stmt = select(Inventory).filter(Inventory.id == rental.item_id)
+            item_res = await db.execute(item_stmt)
+            item = item_res.scalar_one_or_none()
 
-        if item and item.rental_id == rental.id:
-            item.rental_status = False
-            item.rental_id = None
+            if item and item.rental_id == rental.id:
+                item.rental_status = False
+                item.rental_id = None
 
-        await db.delete(rental)
-        await db.commit()
+            await db.delete(rental)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            raise ValidationError(f"Could not delete rental for '{item.name}'") from e

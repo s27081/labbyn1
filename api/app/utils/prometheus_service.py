@@ -9,6 +9,8 @@ import aiofiles
 import httpx
 from dotenv import load_dotenv
 
+from app.core.exceptions import ExternalServiceError, ValidationError
+
 load_dotenv(".env/api.env")
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL")
 PROMETHEUS_TARGETS_PATH = os.getenv("PROMETHEUS_TARGETS_PATH")
@@ -56,7 +58,9 @@ async def _request(
             await asyncio.sleep(backoff_factor)
         except (httpx.RequestError, asyncio.TimeoutError):
             await asyncio.sleep(backoff_factor)
-    raise httpx.HTTPError(f"Failed to fetch data from {url} after {retries} attempts")
+    raise ExternalServiceError(
+        service="Prometheus", detail=f"Failed to connect after {retries} attempts:"
+    )
 
 
 async def _format_metrics_to_readable(item: dict):
@@ -93,7 +97,9 @@ async def fetch_prometheus_metrics(
     for m in metrics:
         query = DEFAULT_QUERIES.get(m)
         if not query:
-            results[m] = {"error": "Metric not found"}
+            results[m] = {
+                "error": f"Metric definition for '{m}' " f"not found in configuration"
+            }
             continue
         try:
             payload = await _request(url, params={"query": query})
@@ -123,8 +129,10 @@ async def load_targets_file():
             content = await file.read()
             targets = json.loads(content)
         return targets
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
-        return []
+    except (FileNotFoundError, OSError, json.JSONDecodeError) as e:
+        raise ValidationError(
+            "Prometheus targets file is corrupted or unreadable"
+        ) from e
 
 
 async def save_targets_file(targets: List[dict]):
@@ -140,7 +148,9 @@ async def save_targets_file(targets: List[dict]):
         ) as file:
             await file.write(json.dumps(targets, indent=2))
     except (OSError, TypeError) as e:
-        raise TargetSaveError(f"Failed to save targets file: {e}") from e
+        raise ValidationError(
+            "Prometheus targets file is corrupted or unreadable"
+        ) from e
 
 
 async def add_prometheus_target(instance: str, labels: dict):
@@ -156,5 +166,7 @@ async def add_prometheus_target(instance: str, labels: dict):
         try:
             await save_targets_file(targets)
         except TargetSaveError as e:
-            raise TargetSaveError(f"Failed to add target: {e}") from e
+            raise ValidationError(
+                "Prometheus targets file is corrupted or unreadable"
+            ) from e
     return entry

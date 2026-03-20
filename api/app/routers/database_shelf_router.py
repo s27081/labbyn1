@@ -8,6 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth.dependencies import RequestContext
+from app.core.exceptions import (
+    AccessDeniedError,
+    ObjectNotFoundError,
+    ValidationError,
+)
 from app.database import get_async_db
 from app.db.models import Rack, Shelf
 from app.db.schemas import ShelfCreate, ShelfResponse, ShelfUpdate
@@ -37,7 +42,7 @@ async def get_shelves_by_rack(
     rack = rack_res.scalar_one_or_none()
 
     if not rack:
-        raise HTTPException(status_code=404, detail="Rack does not exist.")
+        raise ObjectNotFoundError("Rack")
 
     stmt = (
         select(Shelf)
@@ -72,16 +77,14 @@ async def get_single_shelf(
     shelf = result.unique().scalar_one_or_none()
 
     if not shelf:
-        raise HTTPException(status_code=404, detail="Shelf does not exist.")
+        raise ObjectNotFoundError("Shelf")
 
     rack_stmt = select(Rack).filter(Rack.id == shelf.rack_id)
     rack_stmt = ctx.team_filter(rack_stmt, Rack)
     rack_res = await db.execute(rack_stmt)
 
     if not rack_res.scalar_one_or_none():
-        raise HTTPException(
-            status_code=403, detail="You do not have permission to view this shelf."
-        )
+        raise AccessDeniedError("You do not have permission to view this shelf")
 
     return shelf
 
@@ -113,18 +116,21 @@ async def create_shelf(
         rack = rack_res.scalar_one_or_none()
 
         if not rack:
-            raise HTTPException(
-                status_code=404, detail="Rack does not exist or access denied."
-            )
+            raise ObjectNotFoundError("Rack")
 
-        db_shelf = Shelf(**shelf_data.model_dump(), rack_id=rack_id)
-        db.add(db_shelf)
-        await db.commit()
-        await db.refresh(db_shelf, attribute_names=["rack", "machines"])
+        try:
+            db_shelf = Shelf(**shelf_data.model_dump(), rack_id=rack_id)
+            db.add(db_shelf)
+            await db.commit()
 
-        db_shelf.rack_name = rack.name
-
-        return db_shelf
+            await db.refresh(db_shelf, attribute_names=["rack", "machines"])
+            db_shelf.rack_name = rack.name
+            return db_shelf
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Failed to create shelf {db_shelf.name} in rack '{rack.name}'"
+            ) from e
 
 
 @router.patch("/shelf/{shelf_id}", response_model=ShelfResponse)
@@ -157,19 +163,19 @@ async def update_shelf(
         rack_res = await db.execute(rack_stmt)
 
         if not rack_res.scalar_one_or_none():
-            raise HTTPException(
-                status_code=403,
-                detail="You do not have permission to manage this shelf.",
-            )
+            raise AccessDeniedError("You do not have permission to manage this shelf")
 
-        update_dict = shelf_data.model_dump(exclude_unset=True)
+        try:
+            update_dict = shelf_data.model_dump(exclude_unset=True)
+            for key, value in update_dict.items():
+                setattr(db_shelf, key, value)
 
-        for key, value in update_dict.items():
-            setattr(db_shelf, key, value)
-
-        await db.commit()
-        await db.refresh(db_shelf, attribute_names=["rack", "machines"])
-        return db_shelf
+            await db.commit()
+            await db.refresh(db_shelf, attribute_names=["rack", "machines"])
+            return db_shelf
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Failed to update shelf '{db_shelf.name}'") from e
 
 
 @router.delete("/shelf/{shelf_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -197,25 +203,26 @@ async def delete_shelf(
         db_shelf = result.unique().scalar_one_or_none()
 
         if not db_shelf:
-            raise HTTPException(status_code=404, detail="Shelf does not exist.")
+            raise ObjectNotFoundError("Shelf")
 
         rack_stmt = select(Rack).filter(Rack.id == db_shelf.rack_id)
         rack_stmt = ctx.team_filter(rack_stmt, Rack)
         rack_res = await db.execute(rack_stmt)
 
         if not rack_res.scalar_one_or_none():
-            raise HTTPException(
-                status_code=403,
-                detail="You do not have permission to manage this shelf.",
-            )
+            raise AccessDeniedError("You do not have permission to delete this shelf")
 
         if db_shelf.machines:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Shelf is not empty. Please remove all machines from "
-                "the shelf before deleting it.",
+            count = len(db_shelf.machines)
+            raise ValidationError(
+                f"Shelf '{db_shelf.name}' is not empty (contains {count} machines). "
+                "Move or delete machines first."
             )
-
-        await db.delete(db_shelf)
-        await db.commit()
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        try:
+            shelf_name = db_shelf.name
+            await db.delete(db_shelf)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(f"Could not delete shelf '{shelf_name}'") from e
