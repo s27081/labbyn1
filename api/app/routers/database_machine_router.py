@@ -1,6 +1,6 @@
 """Router for Machine Database API CRUD."""
 
-import json
+import json, os
 from typing import List
 
 from fastapi import APIRouter, Depends, Response, status
@@ -22,6 +22,11 @@ from app.db.schemas import (
 from app.utils.redis_service import acquire_lock, get_cache
 
 router = APIRouter(prefix="/db", tags=["Machines"])
+
+if os.environ.get("ENV") == "development":
+    GRAFANA_URL = "http://localhost:3001"
+else:
+    GRAFANA_URL = "http://grafana:3000"
 
 
 @router.post(
@@ -217,7 +222,8 @@ async def get_machine_full_detail(
         ]
         live_payload["disks"] = disks_stats
 
-    grafana_link = f"http://grafana.{target_ip}:9100"
+    # Hardcoded UUID in Grafana dashboard config allows to link to the dashboard without dynamic parameters
+    grafana_link = f"{GRAFANA_URL}/d/ARCDarkvk/?orgId=1&var-host={target_ip}"
     rack_link = f"/racks/{machine.shelf.rack_id}" if machine.shelf else "#"
     map_link = "/map/view"
 
