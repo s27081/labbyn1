@@ -18,6 +18,8 @@ services:
       - "8000:8000"
     volumes:
       - ./api:/code/
+    environment:
+      - ENV=development
   db:
     ports:
       - "5432:5432"
