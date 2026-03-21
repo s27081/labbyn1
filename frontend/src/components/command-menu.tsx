@@ -1,11 +1,15 @@
 import {
   Activity,
+  Brackets,
+  ClipboardList,
   Database,
+  DoorOpen,
   FileText,
   Loader2,
   Search,
   Server,
   User,
+  Users,
 } from 'lucide-react'
 import React, { useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
@@ -14,6 +18,7 @@ import { SidebarMenuButton, SidebarMenuItem } from './ui/sidebar'
 import { Button } from './ui/button'
 import { Kbd, KbdGroup } from './ui/kbd'
 import type { Device } from '@/types/types'
+import type { ApiSearchItem } from '@/integrations/search/search.types'
 import {
   CommandDialog,
   CommandEmpty,
@@ -23,31 +28,23 @@ import {
   CommandList,
   CommandSeparator,
 } from '@/components/ui/command'
-import {
-  documents as mockDocs,
-  labs as mockLabs,
-  users as mockUsers,
-} from '@/lib/mock-data'
+import { searchListQueryOptions } from '@/integrations/search/search.query'
 
-// Symulacja pobierania wszystkich danych potrzebnych do wyszukiwarki
-// W prawdziwej aplikacji byłby to np. endpoint /api/search-index
-const fetchGlobalSearchData = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  return {
-    labs: mockLabs,
-    users: mockUsers,
-    docs: mockDocs,
-  }
+const categoryIcons: Record<string, React.ElementType> = {
+  users: User,
+  machines: Server,
+  racks: Brackets,
+  teams: Users,
+  rooms: DoorOpen,
+  inventory: ClipboardList,
+  documentation: FileText,
 }
 
 export function CommandMenu() {
   const [open, setOpen] = React.useState(false)
   const navigate = useNavigate()
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['global-search'],
-    queryFn: fetchGlobalSearchData,
-  })
+  const { data, isLoading } = useQuery(searchListQueryOptions)
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -61,22 +58,6 @@ export function CommandMenu() {
     window.addEventListener('keydown', down)
     return () => window.removeEventListener('keydown', down)
   }, [])
-
-  const flattenedDevices = useMemo(() => {
-    if (!data?.labs) return []
-    const devs: Array<Device> = []
-    data.labs.forEach((lab) => {
-      lab.racks.forEach((rack) => {
-        rack.devices.forEach((device) => {
-          devs.push({
-            ...device,
-            location: `${lab.name} > ${rack.id}`,
-          })
-        })
-      })
-    })
-    return devs
-  }, [data?.labs])
 
   const runCommand = React.useCallback((command: () => unknown) => {
     setOpen(false)
@@ -113,91 +94,50 @@ export function CommandMenu() {
           ) : (
             <>
               <CommandEmpty>No results found.</CommandEmpty>
-              <CommandGroup heading="Infrastructure & Devices">
-                {flattenedDevices.map((device) => (
-                  <CommandItem
-                    key={device.device_id}
-                    // Massive value string enables fuzzy search on IP, MAC, Type, Hostname
-                    value={`${device.hostname} ${device.ip_address} ${device.device_type} ${device.location} ${device.mac_address}`}
-                    onSelect={() =>
-                      runCommand(() =>
-                        navigate({
-                          to: `/inventory/device/${device.device_id}`,
-                        }),
-                      )
-                    }
-                  >
-                    {device.device_type.includes('Switch') ? (
-                      <Activity className="mr-2 h-4 w-4 text-green-500" />
-                    ) : device.device_type.includes('Storage') ? (
-                      <Database className="mr-2 h-4 w-4 text-purple-500" />
-                    ) : (
-                      <Server className="mr-2 h-4 w-4 text-slate-500" />
-                    )}
 
-                    <div className="flex w-full flex-col gap-0.5">
-                      <div className="flex items-center justify-between">
-                        <span>{device.hostname}</span>
-                        <span className="text-xs font-mono text-muted-foreground">
-                          {device.ip_address}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <span className="truncate max-w-37.5">
-                          {device.location}
-                        </span>
-                        <span className="border-l pl-2">
-                          {device.device_type}
-                        </span>
-                      </div>
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+              {data &&
+                Object.entries(data).map(([categoryName, items]) => {
+                  // Skip rendering the group entirely if there are no items
+                  if (!items || items.length === 0) return null
 
-              <CommandSeparator />
+                  // Capitalize the category name for the heading ("machines" -> "Machines")
+                  const heading =
+                    categoryName.charAt(0).toUpperCase() + categoryName.slice(1)
+                  const IconComponent = categoryIcons[categoryName] || FileText
 
-              <CommandGroup heading="Documentation">
-                {data?.docs.map((doc) => (
-                  <CommandItem
-                    key={doc.id}
-                    value={`${doc.name} ${doc.type}`}
-                    onSelect={() =>
-                      runCommand(() => navigate({ to: `/docs/${doc.id}` }))
-                    }
-                  >
-                    <FileText className="mr-2 h-4 w-4 text-orange-500" />
-                    <span>{doc.name}</span>
-                    <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                      {doc.type}
-                    </span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+                  return (
+                    <CommandGroup key={categoryName} heading={heading}>
+                      {items.map((item: ApiSearchItem) => (
+                        <CommandItem
+                          key={item.id}
+                          value={`${item.id} ${item.label} ${item.sublabel}`}
+                          onSelect={() =>
+                            runCommand(() =>
+                              navigate({ to: `${item.target_url}` }),
+                            )
+                          }
+                        >
+                          <div className="flex w-full items-center gap-3">
+                            <IconComponent />
 
-              <CommandSeparator />
+                            <div className="flex flex-1 flex-col">
+                              <span className="text-sm font-medium leading-none mb-1">
+                                {item.label}
+                              </span>
+                              <span className="text-xs text-muted-foreground line-clamp-1">
+                                {item.sublabel}
+                              </span>
+                            </div>
 
-              <CommandGroup heading="Team">
-                {data?.users.map((user) => (
-                  <CommandItem
-                    key={user.id}
-                    value={`${user.name} ${user.surname} ${user.role} ${user.team}`}
-                    onSelect={() =>
-                      runCommand(() => navigate({ to: `/users/${user.id}` }))
-                    }
-                  >
-                    <User className="mr-2 h-4 w-4 text-blue-500" />
-                    <div className="flex flex-col">
-                      <span>
-                        {user.name} {user.surname}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {user.role}
-                      </span>
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+                            <span className="text-[10px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded-sm shrink-0">
+                              ID: {item.id}
+                            </span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )
+                })}
             </>
           )}
         </CommandList>
