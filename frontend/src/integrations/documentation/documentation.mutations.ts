@@ -41,7 +41,7 @@ export const useUpdateDocumentMutation = () => {
         title: doc.title,
         content: doc.content,
       }
-      const { data } = await api.put<ApiDocumentationItem>(
+      const { data } = await api.patch<ApiDocumentationItem>(
         PATHS.SINGLE(doc.id),
         payload,
       )
