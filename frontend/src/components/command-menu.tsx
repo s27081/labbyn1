@@ -1,8 +1,6 @@
 import {
-  Activity,
   Brackets,
   ClipboardList,
-  Database,
   DoorOpen,
   FileText,
   Loader2,
@@ -11,13 +9,13 @@ import {
   User,
   Users,
 } from 'lucide-react'
-import React, { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { SidebarMenuButton, SidebarMenuItem } from './ui/sidebar'
 import { Button } from './ui/button'
 import { Kbd, KbdGroup } from './ui/kbd'
-import type { Device } from '@/types/types'
+import type { LucideIcon } from 'lucide-react'
 import type { ApiSearchItem } from '@/integrations/search/search.types'
 import {
   CommandDialog,
@@ -26,11 +24,10 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from '@/components/ui/command'
 import { searchListQueryOptions } from '@/integrations/search/search.query'
 
-const categoryIcons: Record<string, React.ElementType> = {
+const categoryIcons: Record<string, LucideIcon> = {
   users: User,
   machines: Server,
   racks: Brackets,
@@ -41,17 +38,18 @@ const categoryIcons: Record<string, React.ElementType> = {
 }
 
 export function CommandMenu() {
-  const [open, setOpen] = React.useState(false)
+  const [open, setOpen] = useState(false)
+  const [activeFilter, setActiveFilter] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const { data, isLoading } = useQuery(searchListQueryOptions)
 
-  React.useEffect(() => {
+  useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         e.stopPropagation()
-        setOpen((open) => !open)
+        setOpen((prev) => !prev)
       }
     }
 
@@ -59,25 +57,32 @@ export function CommandMenu() {
     return () => window.removeEventListener('keydown', down)
   }, [])
 
-  const runCommand = React.useCallback((command: () => unknown) => {
+  const runCommand = useCallback((command: () => unknown) => {
     setOpen(false)
     command()
   }, [])
+
+  const availableCategories = useMemo(() => {
+    if (!data) return []
+    return Object.entries(data)
+      .filter(([_, items]) => items.length > 0)
+      .map(([key]) => key)
+  }, [data])
 
   return (
     <>
       <SidebarMenuItem key={'search'}>
         <SidebarMenuButton asChild onClick={() => setOpen(true)}>
           <Button
-            variant={'outline'}
-            className="text-foreground dark:bg-card hover:bg-accent hover:border-primary relative h-8 w-full justify-start pl-3 font-normal shadow-none"
+            variant="outline"
+            className="h-8 w-full justify-start pl-3 font-normal text-muted-foreground shadow-none hover:bg-accent hover:text-accent-foreground"
           >
             <Search />
             <span>Search resources...</span>
             <KbdGroup>
               <Kbd>Ctrl</Kbd>
               <span>+</span>
-              <Kbd>K</Kbd>
+              <Kbd>k</Kbd>
             </KbdGroup>
           </Button>
         </SidebarMenuButton>
@@ -85,25 +90,57 @@ export function CommandMenu() {
 
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput placeholder="Search users, docs, or devices (e.g. '10.1.1' or 'GPU')..." />
+
+        {availableCategories.length > 0 && (
+          <div className="flex items-center gap-2 overflow-x-auto border-b px-3 py-2 scrollbar-hide">
+            <Button
+              variant={activeFilter === null ? 'default' : 'secondary'}
+              size="sm"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => setActiveFilter(null)}
+            >
+              All
+            </Button>
+            {availableCategories.map((cat) => {
+              const Icon = categoryIcons[cat]
+              return (
+                <Button
+                  key={cat}
+                  variant={activeFilter === cat ? 'default' : 'secondary'}
+                  size="sm"
+                  className="h-7 rounded-full px-3 text-xs capitalize"
+                  onClick={() =>
+                    setActiveFilter(activeFilter === cat ? null : cat)
+                  }
+                >
+                  <Icon className="mr-1.5 h-3 w-3" />
+                  {cat}
+                </Button>
+              )
+            })}
+          </div>
+        )}
+
         <CommandList>
           {isLoading ? (
-            <div className="py-6 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading index...
             </div>
           ) : (
             <>
-              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandEmpty className="py-8 text-center text-sm">
+                No results found.
+              </CommandEmpty>
 
               {data &&
                 Object.entries(data).map(([categoryName, items]) => {
-                  // Skip rendering the group entirely if there are no items
-                  if (!items || items.length === 0) return null
+                  if (items.length === 0) return null
+                  if (activeFilter && activeFilter !== categoryName) return null
 
-                  // Capitalize the category name for the heading ("machines" -> "Machines")
                   const heading =
                     categoryName.charAt(0).toUpperCase() + categoryName.slice(1)
-                  const IconComponent = categoryIcons[categoryName] || FileText
+                  const IconComponent = categoryIcons[categoryName]
 
                   return (
                     <CommandGroup key={categoryName} heading={heading}>
@@ -116,20 +153,21 @@ export function CommandMenu() {
                               navigate({ to: `${item.target_url}` }),
                             )
                           }
+                          className="group my-0.5"
                         >
                           <div className="flex w-full items-center gap-3">
-                            <IconComponent />
+                            <IconComponent className="h-4 w-4 shrink-0 text-muted-foreground group-aria-selected:text-primary" />
 
-                            <div className="flex flex-1 flex-col">
-                              <span className="text-sm font-medium leading-none mb-1">
+                            <div className="flex flex-1 flex-col overflow-hidden">
+                              <span className="truncate text-sm font-medium">
                                 {item.label}
                               </span>
-                              <span className="text-xs text-muted-foreground line-clamp-1">
+                              <span className="truncate text-xs text-muted-foreground group-aria-selected:text-foreground">
                                 {item.sublabel}
                               </span>
                             </div>
 
-                            <span className="text-[10px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded-sm shrink-0">
+                            <span className="shrink-0 rounded bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                               ID: {item.id}
                             </span>
                           </div>
