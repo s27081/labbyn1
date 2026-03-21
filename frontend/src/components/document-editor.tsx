@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card } from '@/components/ui/card'
-import { useDocsContext } from '@/routes/_auth/docs/-context'
+import { useDocsContext } from '@/routes/_auth/documentation/-context'
 
 interface DocumentEditorProps {
   document: Document
