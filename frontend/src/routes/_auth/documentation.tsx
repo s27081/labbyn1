@@ -2,7 +2,7 @@ import { Outlet, createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BookText } from 'lucide-react'
-import { DocsProvider } from './docs/-context'
+import { DocsProvider } from './documentation/-context'
 import type { Document } from '@/types/types'
 import { DocumentList } from '@/components/document-list'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { PageHeader } from '@/components/page-header'
 
-export const Route = createFileRoute('/_auth/docs')({
+export const Route = createFileRoute('/_auth/documentation')({
   component: DocsLayout,
 })
 
@@ -92,7 +92,7 @@ function DocsLayout() {
                   selectedDoc={null}
                   onSelectDocument={(doc) =>
                     navigate({
-                      to: '/docs/$docId',
+                      to: '/documentation/$docId',
                       params: { docId: String(doc.id) },
                     })
                   }

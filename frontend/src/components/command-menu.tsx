@@ -1,19 +1,22 @@
 import {
-  Activity,
-  Database,
+  Brackets,
+  ClipboardList,
+  DoorOpen,
   FileText,
   Loader2,
   Search,
   Server,
   User,
+  Users,
 } from 'lucide-react'
-import React, { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { SidebarMenuButton, SidebarMenuItem } from './ui/sidebar'
 import { Button } from './ui/button'
 import { Kbd, KbdGroup } from './ui/kbd'
-import type { Device } from '@/types/types'
+import type { LucideIcon } from 'lucide-react'
+import type { ApiSearchItem } from '@/integrations/search/search.types'
 import {
   CommandDialog,
   CommandEmpty,
@@ -21,40 +24,32 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from '@/components/ui/command'
-import {
-  documents as mockDocs,
-  labs as mockLabs,
-  users as mockUsers,
-} from '@/lib/mock-data'
+import { searchListQueryOptions } from '@/integrations/search/search.query'
 
-// Symulacja pobierania wszystkich danych potrzebnych do wyszukiwarki
-// W prawdziwej aplikacji byłby to np. endpoint /api/search-index
-const fetchGlobalSearchData = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  return {
-    labs: mockLabs,
-    users: mockUsers,
-    docs: mockDocs,
-  }
+const categoryIcons: Record<string, LucideIcon> = {
+  users: User,
+  machines: Server,
+  racks: Brackets,
+  teams: Users,
+  rooms: DoorOpen,
+  inventory: ClipboardList,
+  documentation: FileText,
 }
 
 export function CommandMenu() {
-  const [open, setOpen] = React.useState(false)
+  const [open, setOpen] = useState(false)
+  const [activeFilter, setActiveFilter] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['global-search'],
-    queryFn: fetchGlobalSearchData,
-  })
+  const { data, isLoading } = useQuery(searchListQueryOptions)
 
-  React.useEffect(() => {
+  useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         e.stopPropagation()
-        setOpen((open) => !open)
+        setOpen((prev) => !prev)
       }
     }
 
@@ -62,41 +57,32 @@ export function CommandMenu() {
     return () => window.removeEventListener('keydown', down)
   }, [])
 
-  const flattenedDevices = useMemo(() => {
-    if (!data?.labs) return []
-    const devs: Array<Device> = []
-    data.labs.forEach((lab) => {
-      lab.racks.forEach((rack) => {
-        rack.devices.forEach((device) => {
-          devs.push({
-            ...device,
-            location: `${lab.name} > ${rack.id}`,
-          })
-        })
-      })
-    })
-    return devs
-  }, [data?.labs])
-
-  const runCommand = React.useCallback((command: () => unknown) => {
+  const runCommand = useCallback((command: () => unknown) => {
     setOpen(false)
     command()
   }, [])
+
+  const availableCategories = useMemo(() => {
+    if (!data) return []
+    return Object.entries(data)
+      .filter(([_, items]) => items.length > 0)
+      .map(([key]) => key)
+  }, [data])
 
   return (
     <>
       <SidebarMenuItem key={'search'}>
         <SidebarMenuButton asChild onClick={() => setOpen(true)}>
           <Button
-            variant={'outline'}
-            className="text-foreground dark:bg-card hover:bg-accent hover:border-primary relative h-8 w-full justify-start pl-3 font-normal shadow-none"
+            variant="outline"
+            className="h-8 w-full justify-start pl-3 font-normal text-muted-foreground shadow-none hover:bg-accent hover:text-accent-foreground"
           >
             <Search />
             <span>Search resources...</span>
             <KbdGroup>
               <Kbd>Ctrl</Kbd>
               <span>+</span>
-              <Kbd>K</Kbd>
+              <Kbd>k</Kbd>
             </KbdGroup>
           </Button>
         </SidebarMenuButton>
@@ -104,100 +90,92 @@ export function CommandMenu() {
 
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput placeholder="Search users, docs, or devices (e.g. '10.1.1' or 'GPU')..." />
+
+        {availableCategories.length > 0 && (
+          <div className="flex items-center gap-2 overflow-x-auto border-b px-3 py-2 scrollbar-hide">
+            <Button
+              variant={activeFilter === null ? 'default' : 'secondary'}
+              size="sm"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => setActiveFilter(null)}
+            >
+              All
+            </Button>
+            {availableCategories.map((cat) => {
+              const Icon = categoryIcons[cat]
+              return (
+                <Button
+                  key={cat}
+                  variant={activeFilter === cat ? 'default' : 'secondary'}
+                  size="sm"
+                  className="h-7 rounded-full px-3 text-xs capitalize"
+                  onClick={() =>
+                    setActiveFilter(activeFilter === cat ? null : cat)
+                  }
+                >
+                  <Icon className="mr-1.5 h-3 w-3" />
+                  {cat}
+                </Button>
+              )
+            })}
+          </div>
+        )}
+
         <CommandList>
           {isLoading ? (
-            <div className="py-6 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading index...
             </div>
           ) : (
             <>
-              <CommandEmpty>No results found.</CommandEmpty>
-              <CommandGroup heading="Infrastructure & Devices">
-                {flattenedDevices.map((device) => (
-                  <CommandItem
-                    key={device.device_id}
-                    // Massive value string enables fuzzy search on IP, MAC, Type, Hostname
-                    value={`${device.hostname} ${device.ip_address} ${device.device_type} ${device.location} ${device.mac_address}`}
-                    onSelect={() =>
-                      runCommand(() =>
-                        navigate({
-                          to: `/inventory/device/${device.device_id}`,
-                        }),
-                      )
-                    }
-                  >
-                    {device.device_type.includes('Switch') ? (
-                      <Activity className="mr-2 h-4 w-4 text-green-500" />
-                    ) : device.device_type.includes('Storage') ? (
-                      <Database className="mr-2 h-4 w-4 text-purple-500" />
-                    ) : (
-                      <Server className="mr-2 h-4 w-4 text-slate-500" />
-                    )}
+              <CommandEmpty className="py-8 text-center text-sm">
+                No results found.
+              </CommandEmpty>
 
-                    <div className="flex w-full flex-col gap-0.5">
-                      <div className="flex items-center justify-between">
-                        <span>{device.hostname}</span>
-                        <span className="text-xs font-mono text-muted-foreground">
-                          {device.ip_address}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <span className="truncate max-w-37.5">
-                          {device.location}
-                        </span>
-                        <span className="border-l pl-2">
-                          {device.device_type}
-                        </span>
-                      </div>
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+              {data &&
+                Object.entries(data).map(([categoryName, items]) => {
+                  if (items.length === 0) return null
+                  if (activeFilter && activeFilter !== categoryName) return null
 
-              <CommandSeparator />
+                  const heading =
+                    categoryName.charAt(0).toUpperCase() + categoryName.slice(1)
+                  const IconComponent = categoryIcons[categoryName]
 
-              <CommandGroup heading="Documentation">
-                {data?.docs.map((doc) => (
-                  <CommandItem
-                    key={doc.id}
-                    value={`${doc.name} ${doc.type}`}
-                    onSelect={() =>
-                      runCommand(() => navigate({ to: `/docs/${doc.id}` }))
-                    }
-                  >
-                    <FileText className="mr-2 h-4 w-4 text-orange-500" />
-                    <span>{doc.name}</span>
-                    <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                      {doc.type}
-                    </span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+                  return (
+                    <CommandGroup key={categoryName} heading={heading}>
+                      {items.map((item: ApiSearchItem) => (
+                        <CommandItem
+                          key={item.id}
+                          value={`${item.id} ${item.label} ${item.sublabel}`}
+                          onSelect={() =>
+                            runCommand(() =>
+                              navigate({ to: `${item.target_url}` }),
+                            )
+                          }
+                          className="group my-0.5"
+                        >
+                          <div className="flex w-full items-center gap-3">
+                            <IconComponent className="h-4 w-4 shrink-0 text-muted-foreground group-aria-selected:text-primary" />
 
-              <CommandSeparator />
+                            <div className="flex flex-1 flex-col overflow-hidden">
+                              <span className="truncate text-sm font-medium">
+                                {item.label}
+                              </span>
+                              <span className="truncate text-xs text-muted-foreground group-aria-selected:text-foreground">
+                                {item.sublabel}
+                              </span>
+                            </div>
 
-              <CommandGroup heading="Team">
-                {data?.users.map((user) => (
-                  <CommandItem
-                    key={user.id}
-                    value={`${user.name} ${user.surname} ${user.role} ${user.team}`}
-                    onSelect={() =>
-                      runCommand(() => navigate({ to: `/users/${user.id}` }))
-                    }
-                  >
-                    <User className="mr-2 h-4 w-4 text-blue-500" />
-                    <div className="flex flex-col">
-                      <span>
-                        {user.name} {user.surname}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {user.role}
-                      </span>
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+                            <span className="shrink-0 rounded bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              ID: {item.id}
+                            </span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )
+                })}
             </>
           )}
         </CommandList>

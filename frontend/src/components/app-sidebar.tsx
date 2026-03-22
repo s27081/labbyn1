@@ -76,7 +76,7 @@ const items = [
   { title: 'History', url: '/history', icon: History },
   { title: 'Users', url: '/users', icon: User },
   { title: 'Teams', url: '/teams', icon: Users },
-  { title: 'Documentation', url: '/docs', icon: FileText },
+  { title: 'Documentation', url: '/documentation', icon: FileText },
   { title: 'Import & Export', url: '/import-export', icon: FolderInput },
 ]
 

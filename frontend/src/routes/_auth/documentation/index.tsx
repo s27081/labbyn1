@@ -8,7 +8,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 
-export const Route = createFileRoute('/_auth/docs/')({
+export const Route = createFileRoute('/_auth/documentation/')({
   component: DocsIndex,
 })
 

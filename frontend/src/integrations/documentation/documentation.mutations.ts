@@ -26,7 +26,7 @@ export const useCreateDocumentMutation = () => {
     onSuccess: (newDoc) => {
       toast.success('Document created')
       queryClient.invalidateQueries({ queryKey: ['documentation'] })
-      navigate({ to: '/docs/$docId', params: { docId: String(newDoc.id) } })
+      navigate({ to: '/documentation/$docId', params: { docId: String(newDoc.id) } })
     },
     onError: () => toast.error('Failed to create document'),
   })
@@ -41,7 +41,7 @@ export const useUpdateDocumentMutation = () => {
         title: doc.title,
         content: doc.content,
       }
-      const { data } = await api.put<ApiDocumentationItem>(
+      const { data } = await api.patch<ApiDocumentationItem>(
         PATHS.SINGLE(doc.id),
         payload,
       )
@@ -69,7 +69,7 @@ export const useDeleteDocumentMutation = () => {
     onSuccess: () => {
       toast.success('Document deleted')
       queryClient.invalidateQueries({ queryKey: ['documentation'] })
-      navigate({ to: '/docs' })
+      navigate({ to: '/documentation' })
     },
     onError: () => toast.error('Failed to delete document'),
   })

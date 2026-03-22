@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
-export const Route = createFileRoute('/_auth/docs/$docId')({
+export const Route = createFileRoute('/_auth/documentation/$docId')({
   component: DocDetailComponent,
 })
 
