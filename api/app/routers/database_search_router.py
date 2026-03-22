@@ -77,7 +77,7 @@ async def get_search_data(
             {
                 "id": d.id,
                 "label": d.title,
-                "sublabel": f"Autor: {d.author}",
+                "sublabel": f"Author: {d.author}",
                 "target_url": f"/documentation/{d.id}",
             }
             for d in docs
