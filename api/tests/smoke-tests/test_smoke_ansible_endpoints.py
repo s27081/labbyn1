@@ -1,18 +1,28 @@
-import pytest
-import os
+"""Ansible tests verify ansible logic."""
+
 import json
+import os
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
+
+from app.db.models import Machines, Metadata, Rooms
 from app.utils.ansible_service import REPORTS_DIR
-from app.db.models import Machines, Rooms, Metadata
 
-
-pytestmark = [pytest.mark.smoke, pytest.mark.api, pytest.mark.ansible]
+pytestmark = [
+    pytest.mark.smoke,
+    pytest.mark.api,
+    pytest.mark.ansible,
+    pytest.mark.asyncio,
+]
 
 
 def helper_write_report(
     hostname: str, os_name: str = "Ubuntu 22.04", cpu_name: str = "Intel Test"
 ):
-    """
-    Creates a fake JSON report file on the disk to simulate Ansible output.
+    """Creates a fake JSON report file on the disk to simulate Ansible output.
+
     :param hostname: The IP or hostname of the machine.
     :param os_name: OS name to put in the report.
     :param cpu_name: CPU name to put in the report.
@@ -37,11 +47,11 @@ def helper_write_report(
 
 
 @pytest.mark.database
-def test_discovery_flow(
-    test_client, db_session, service_header_sync, mock_ansible_success
+async def test_discovery_flow(
+    test_client, db_session, service_header, mock_ansible_success
 ):
-    """
-    Verifies that the API creates machine records in the database based on mock reports
+    """Verifies that the API creates machine records in the database based on mock reports.
+
     and confirms their existence directly via DB session.
     """
     test_ip = "127.0.0.1"
@@ -49,15 +59,21 @@ def test_discovery_flow(
 
     payload = {"hosts": [test_ip], "extra_vars": {"ansible_user": "test"}}
 
-    response = test_client.post(
-        "/ansible/discovery", json=payload, headers=service_header_sync
+    response = await test_client.post(
+        "/ansible/discovery", json=payload, headers=service_header
     )
 
     assert response.status_code == 200
     assert "summary" in response.json()
     assert response.json()["summary"][0]["status"] != "error"
 
-    machine = db_session.query(Machines).filter(Machines.name == test_ip).first()
+    stmt = (
+        select(Machines)
+        .options(joinedload(Machines.cpus), joinedload(Machines.disks))
+        .where(Machines.name == test_ip)
+    )
+    result = await db_session.execute(stmt)
+    machine = result.unique().scalar_one_or_none()
 
     assert machine is not None, f"Machine {test_ip} not found in DB after discovery."
     assert "Ubuntu" in machine.os
@@ -65,11 +81,11 @@ def test_discovery_flow(
 
 
 @pytest.mark.database
-def test_refresh_flow(
-    test_client, db_session, service_header_sync, mock_ansible_success
+async def test_refresh_flow(
+    test_client, db_session, service_header, mock_ansible_success
 ):
-    """
-    Tests the hardware refresh logic by:
+    """Tests the hardware refresh logic.
+
     1. Running discovery to create a machine and its metadata automatically.
     2. Manually sabotaging the machine data in the DB (changing OS).
     3. Running refresh to verify the data is restored from the Ansible report.
@@ -80,44 +96,58 @@ def test_refresh_flow(
 
     helper_write_report(test_ip, os_name=original_os, cpu_name=cpu_name)
     discovery_payload = {"hosts": [test_ip], "extra_vars": {"ansible_user": "test"}}
-    test_client.post(
-        "/ansible/discovery", json=discovery_payload, headers=service_header_sync
+    await test_client.post(
+        "/ansible/discovery", json=discovery_payload, headers=service_header
     )
 
-    machine = db_session.query(Machines).filter(Machines.name == test_ip).first()
+    stmt = select(Machines).where(Machines.name == test_ip)
+    result = await db_session.execute(stmt)
+    machine = result.unique().scalar_one_or_none()
+
     assert machine is not None
     machine_id = machine.id
 
     machine.os = "OS"
-    db_session.commit()
+    await db_session.commit()
 
     refresh_payload = {
         "host": test_ip,
         "extra_vars": {"ansible_user": "test", "ansible_password": "v"},
     }
-    response = test_client.post(
+    response = await test_client.post(
         f"/ansible/machine/{machine_id}/refresh",
         json=refresh_payload,
-        headers=service_header_sync,
+        headers=service_header,
     )
 
     assert response.status_code == 200
-    assert response.json()["message"] == "Machine hardware info updated successfully"
+    assert (
+        response.json()["message"]
+        == "Hardware for 192.168.1.100 refreshed successfully"
+    )
 
     db_session.expire_all()
-    updated_machine = db_session.query(Machines).get(machine_id)
+
+    stmt_updated = (
+        select(Machines)
+        .options(joinedload(Machines.cpus))
+        .where(Machines.id == machine_id)
+    )
+    result_updated = await db_session.execute(stmt_updated)
+    updated_machine = result_updated.unique().scalar_one()
+
     assert updated_machine.os == original_os
     assert updated_machine.cpus[0].name == f"{cpu_name} (4 cores)"
 
 
-def test_create_user_simple(test_client, mock_ansible_success, service_header_sync):
+async def test_create_user_simple(test_client, mock_ansible_success, service_header):
     """Tests the basic execution of the user creation endpoint."""
     payload = {
         "host": "1.1.1.1",
         "extra_vars": {"ansible_user": "v", "ansible_password": "v"},
     }
-    response = test_client.post(
-        "/ansible/create_user", json=payload, headers=service_header_sync
+    response = await test_client.post(
+        "/ansible/create_user", json=payload, headers=service_header
     )
     assert response.status_code == 200
     assert response.json()["status"] == "successful"

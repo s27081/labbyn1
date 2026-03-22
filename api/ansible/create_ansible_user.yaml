@@ -14,19 +14,13 @@
         name: "{{ ansible_user_name }}"
         shell: "{{ ansible_user_shell }}"
         state: present
-
-    - name: Add user to sudo group
-      user:
-        name: ansible
-        groups: sudo
-        append: yes
     
-    - name: Grant passwordless sudo accesa
-      lineinfile:
-        path: /etc/sudoers
-        line: '{{ ansible_user_name }} ALL=(ALL) NOPASSWD: ALL'
+    - name: Grant passwordless sudo access via sudoers.d
+      copy:
+        dest: "/etc/sudoers.d/{{ ansible_user_name }}"
+        content: "{{ ansible_user_name }} ALL=(ALL) NOPASSWD: ALL\n"
+        mode: '0440'
         validate: 'visudo -cf %s'
-        state: present
 
     - name: Ensure .ssh directory exists for new ansible user
       file:

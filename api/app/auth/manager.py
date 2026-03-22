@@ -5,9 +5,10 @@ import os
 from dotenv import load_dotenv
 from fastapi.params import Depends
 from fastapi_users import BaseUserManager, IntegerIDMixin, exceptions
-from app.db.models import User
-from app.database import get_user_db
 from sqlalchemy import select
+
+from app.database import get_user_db
+from app.db.models import User
 
 load_dotenv(".env/api.env")
 AUTH_SECRET = os.getenv("AUTH_SECRET")
@@ -21,6 +22,7 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
 
     async def get_by_login(self, login: str):
         """Retrieve a user by their login.
+
         :param login: The login of the user to retrieve.
         :return: The User instance if found.
         """
@@ -33,6 +35,7 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
 
     async def authenticate(self, credentials):
         """Authenticate a user with given credentials.
+
         :param credentials: The credentials to authenticate.
         :return: The authenticated User instance or None if authentication fails.
         """
@@ -53,6 +56,7 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
 
 async def get_user_manager(user_db=Depends(get_user_db)):
     """Dependency generator that yields a UserManager instance.
+
     :param user_db: Database dependency instance.
     :return: UserManager instance.
     """

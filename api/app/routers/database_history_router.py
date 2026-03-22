@@ -1,32 +1,36 @@
 """Router for History Database API CRUD."""
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
 
-from app.database import get_db
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+
+from app.auth.dependencies import RequestContext
+from app.core.exceptions import ObjectNotFoundError, ValidationError
+from app.database import get_async_db
 from app.db.models import (
-    History,
-    User,
-    EntityType,
     ActionType,
-    Machines,
-    Inventory,
-    Rooms,
     Categories,
+    EntityType,
+    History,
+    Inventory,
+    Machines,
+    Rooms,
+    User,
 )
 from app.db.schemas import HistoryEnhancedResponse
-from app.auth.dependencies import RequestContext
 
-router = APIRouter()
+router = APIRouter(prefix="/db", tags=["History"])
 
 
 def get_model_class(entity_type: EntityType):
-    """
-    Map EntityType to corresponding SQLAlchemy model class.
+    """Map EntityType to corresponding SQLAlchemy model class.
+
     :param entity_type: EntityType enum value
-    :return: Corresponding SQLAlchemy model class or None
+    :return: Corresponding SQLAlchemy model class or None.
     """
     mapping = {
         EntityType.MACHINES: Machines,
@@ -38,12 +42,12 @@ def get_model_class(entity_type: EntityType):
     return mapping.get(entity_type)
 
 
-def resolve_entity_name(log: History, db: Session):
-    """
-    Fetch the name of the entity based on its type and ID.
-    log: History log entry
-    db: Active database session
-    :return: Readable name of the entity
+async def resolve_entity_name(log: History, db: AsyncSession):
+    """Fetch the name of the entity based on its type and ID.
+
+    :param log: History log entry
+    :param db: Active database session
+    :return: Readable name of the entity.
     """
     state = log.after_state or log.before_state
     if state:
@@ -54,7 +58,9 @@ def resolve_entity_name(log: History, db: Session):
 
     model_class = get_model_class(log.entity_type)
     if model_class:
-        entity = db.query(model_class).filter(model_class.id == log.entity_id).first()
+        stmt = select(model_class).filter(model_class.id == log.entity_id)
+        result = await db.execute(stmt)
+        entity = result.scalar_one_or_none()
         if entity:
             return getattr(
                 entity, "name", getattr(entity, "login", f"ID: {log.entity_id}")
@@ -63,17 +69,20 @@ def resolve_entity_name(log: History, db: Session):
     return f"{log.entity_type.value} (ID: {log.entity_id})"
 
 
-def _rollback_create(model_class, log_entry: History, db: Session) -> str:
+async def _rollback_create(model_class, log_entry: History, db: AsyncSession) -> str:
+    """Helper to rollback a CREATE action (performs DELETE).
+
+    :param model_class: SQLAlchemy model class
+    :param log_entry: History log entry
+    :param db: Active database session
+    :return: Success message.
     """
-    Helper to rollback a CREATE action (performs DELETE).
-    model_class: SQLAlchemy model class
-    log_entry: History log entry
-    db: Active database session
-    :return: Success message
-    """
-    obj = db.query(model_class).filter(model_class.id == log_entry.entity_id).first()
+    stmt = select(model_class).filter(model_class.id == log_entry.entity_id)
+    result = await db.execute(stmt)
+    obj = result.scalar_one_or_none()
+
     if obj:
-        db.delete(obj)
+        await db.delete(obj)
         return (
             f"Rollback successful: {log_entry.entity_type.value}, "
             f"ID: {log_entry.entity_id} deleted"
@@ -84,13 +93,13 @@ def _rollback_create(model_class, log_entry: History, db: Session) -> str:
     )
 
 
-def _rollback_delete(model_class, log_entry: History, db: Session) -> str:
-    """
-    Helper to rollback a DELETE action (performs CREATE/RESTORE).
-    model_class: SQLAlchemy model class
-    log_entry: History log entry
-    db: Active database session
-    :return: Success message
+async def _rollback_delete(model_class, log_entry: History, db: AsyncSession) -> str:
+    """Helper to rollback a DELETE action (performs CREATE/RESTORE).
+
+    :param model_class: SQLAlchemy model class
+    :param log_entry: History log entry
+    :param db: Active database session
+    :return: Success message.
     """
     if not log_entry.before_state:
         raise HTTPException(
@@ -106,15 +115,18 @@ def _rollback_delete(model_class, log_entry: History, db: Session) -> str:
     )
 
 
-def _rollback_update(model_class, log_entry: History, db: Session) -> str:
+async def _rollback_update(model_class, log_entry: History, db: AsyncSession) -> str:
+    """Helper to rollback an UPDATE action (reverts fields).
+
+    :param model_class: SQLAlchemy model class
+    :param log_entry: History log entry
+    :param db: Active database session
+    :return: Success message.
     """
-    Helper to rollback an UPDATE action (reverts fields).
-    model_class: SQLAlchemy model class
-    log_entry: History log entry
-    db: Active database session
-    :return: Success message
-    """
-    obj = db.query(model_class).filter(model_class.id == log_entry.entity_id).first()
+    stmt = select(model_class).filter(model_class.id == log_entry.entity_id)
+    result = await db.execute(stmt)
+    obj = result.scalar_one_or_none()
+
     if not obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found"
@@ -131,32 +143,34 @@ def _rollback_update(model_class, log_entry: History, db: Session) -> str:
     )
 
 
-@router.get(
-    "/db/history/", response_model=List[HistoryEnhancedResponse], tags=["History"]
-)
-def get_history_logs(
-    limit=200, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+@router.get("/history/", response_model=List[HistoryEnhancedResponse], tags=["History"])
+async def get_history_logs(
+    limit=200,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Retrieve history logs with enhanced information.
+    """Retrieve history logs with enhanced information.
+
     :param limit: Maximum number of logs to retrieve
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: History logs with enhanced details
+    :return: History logs with enhanced details.
     """
     ctx.require_user()
-    query = (
-        db.query(History)
+    stmt = (
+        select(History)
         .join(User, History.user_id == User.id)
         .options(joinedload(History.user))
     )
-    query = ctx.team_filter(query, User)
-    query = query.order_by(History.timestamp)
-    logs = query.limit(limit).all()
+    stmt = ctx.team_filter(stmt, User)
+    stmt = stmt.order_by(History.timestamp).limit(limit)
+
+    result = await db.execute(stmt)
+    logs = result.unique().scalars().all()
     results = []
 
     for log in logs:
-        readable_name = resolve_entity_name(log, db)
+        readable_name = await resolve_entity_name(log, db)
         action_val = (
             log.action.value if hasattr(log.action, "value") else str(log.action)
         )
@@ -184,85 +198,86 @@ def get_history_logs(
     return results
 
 
-@router.get(
-    "/db/history/{history_id}", response_model=HistoryEnhancedResponse, tags=["History"]
-)
-def get_history_by_id(
-    history_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+@router.get("/history/{history_id}", response_model=HistoryEnhancedResponse)
+async def get_history_by_id(
+    history_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific history by ID
+    """Fetch specific history by ID.
+
     :param history_id: History ID
     :param db: Active database session
-    :return: History object
+    :return: History object.
     """
     ctx.require_user()
-    history = db.query(History).filter(History.id == history_id).first()
+    stmt = (
+        select(History)
+        .join(User, History.user_id == User.id)
+        .options(joinedload(History.user))
+        .filter(History.id == history_id)
+    )
+    stmt = ctx.team_filter(stmt, User)
+    result = await db.execute(stmt)
+    history = result.unique().scalar_one_or_none()
+
     if not history:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="History not found"
-        )
+        raise ObjectNotFoundError("History")
+
     return history
 
 
 @router.post(
-    "/db/history/{history_id}/rollback",
+    "/history/{history_id}/rollback",
     status_code=status.HTTP_200_OK,
-    tags=["History"],
 )
-def rollback_history_entry(
-    history_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+async def rollback_history_entry(
+    history_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Rollback a specific history entry by ID.
+    """Rollback a specific history entry by ID.
+
     :param history_id: History entry ID
     :param db: Active database session
-    :return: Success message
+    :return: Success message.
     """
-
     ctx.require_group_admin()
-    query = (
-        db.query(History)
+    stmt = (
+        select(History)
         .join(User, History.user_id == User.id)
         .filter(History.id == history_id)
     )
-    query = ctx.team_filter(query, User)
+    stmt = ctx.team_filter(stmt, User)
 
-    log_entry = query.first()
+    result = await db.execute(stmt)
+    log_entry = result.scalar_one_or_none()
+
     if not log_entry:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="History not found"
-        )
+        raise ObjectNotFoundError("History")
+
     if not log_entry.can_rollback:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Cannot rollback"
-        )
+        raise ValidationError("This specific action cannot be rolled back")
 
     model_class = get_model_class(log_entry.entity_type)
     if not model_class:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Entity type not found"
-        )
+        raise ObjectNotFoundError("Entity model")
 
     try:
         msg = ""
         if log_entry.action == ActionType.CREATE:
-            msg = _rollback_create(model_class, log_entry, db)
+            msg = await _rollback_create(model_class, log_entry, db)
         elif log_entry.action == ActionType.DELETE:
-            msg = _rollback_delete(model_class, log_entry, db)
+            msg = await _rollback_delete(model_class, log_entry, db)
         elif log_entry.action == ActionType.UPDATE:
-            msg = _rollback_update(model_class, log_entry, db)
+            msg = await _rollback_update(model_class, log_entry, db)
 
-        db.commit()
+        await db.commit()
         return {"message": msg, "success": True}
 
     except IntegrityError as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Entity already exists"
-        ) from e
+        await db.rollback()
+        raise ValidationError("Rollback failed: Conflict with existing data") from e
     except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        ) from e
+        await db.rollback()
+        raise ValidationError("Rollback operation failed") from e

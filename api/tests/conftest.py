@@ -1,47 +1,22 @@
 """Pytest configuration file for setting up test fixtures."""
 
-import uuid
 import asyncio
+import uuid
 from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi.testclient import TestClient
-
-from app.database import SessionLocal
-from app.main import app
-from app.utils import redis_service
-from app.utils.redis_service import REDIS_URL
-from app.utils.redis_service import redis_manager
 from httpx import ASGITransport, AsyncClient
 
-
-@pytest.fixture(scope="session")
-def test_client():
-    """
-    Pytest fixture to create a TestClient for the FastAPI app.
-    :return: TestClient instance
-    """
-    with TestClient(app) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
-async def test_client_async():
-    """
-    Pytest fixture to create an AsyncClient for the FastAPI app.
-    :return: AsyncClient instance
-    """
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        yield client
+from app.database import AsyncSessionLocal
+from app.main import app
+from app.utils.redis_service import redis_manager
 
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """
-    Create an instance of the default event loop for each test module.
+    """Create an instance of the default event loop for each test module.
+
     :return: Event loop instance
     """
     loop = asyncio.get_event_loop_policy().new_event_loop()
@@ -49,10 +24,22 @@ def event_loop():
     loop.close()
 
 
+@pytest.fixture(scope="session")
+async def test_client():
+    """Pytest fixture to create an AsyncClient for the FastAPI app.
+
+    :return: AsyncClient instance
+    """
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True
+    ) as client:
+        yield client
+
+
 @pytest.fixture(scope="module")
 def redis_client_mock():
-    """
-    Pytest fixture to mock Redis client for testing.
+    """Pytest fixture to mock Redis client for testing.
+
     :return: Mocked Redis client
     """
     with mock.patch("app.utils.redis_service.get_redis_client") as mock_redis:
@@ -62,32 +49,28 @@ def redis_client_mock():
 
 
 @pytest.fixture(scope="function")
-def db_session():
-    """
-    Create new database session.
+async def db_session():
+    """Create new database session.
+
     After test finish, close it.
     """
-    session = SessionLocal()
-    session.expire_on_commit = False
-    try:
+    async with AsyncSessionLocal() as session:
         yield session
-    finally:
-        session.rollback()
-        session.close()
+        await session.rollback()
 
 
 @pytest.fixture(scope="function")
 def unique_category_name():
-    """Genearate random category name to avoid unique problems"""
+    """Genearate random category name to avoid unique problems."""
     return f"SmokeTest-GPU-{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(scope="function")
 async def refresh_redis_client(monkeypatch):
-    """
-    Refresh redis client connection (for CI tests)
-     :param monkeypatch: Monkey patching fixture
-     :return: New redis client connection
+    """Refresh redis client connection (for CI tests).
+
+    :param monkeypatch: Monkey patching fixture
+    :return: New redis client connection
     """
     redis_manager.client = None
     redis_manager._loop = None
@@ -98,8 +81,8 @@ async def refresh_redis_client(monkeypatch):
 
 @pytest.fixture(scope="function")
 def mock_ansible_success(monkeypatch):
-    """
-    Mock ansible runner to always return success.
+    """Mock ansible runner to always return success.
+
     :param monkeypatch: Monkey patching fixture
     :return: Ansible runner mock
     """
@@ -114,24 +97,12 @@ def mock_ansible_success(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-async def service_header():
-    """
-    Generate service authorization header for tests.
+async def service_header(test_client):
+    """Generate service authorization header for tests.
+
     :return: Authorization header with service token
     """
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        res = await ac.post(
-            "/auth/login", data={"username": "Service", "password": "Service"}
-        )
-        token = res.json()["access_token"]
-        return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture(scope="function")
-def service_header_sync(test_client):
-    res = test_client.post(
+    res = await test_client.post(
         "/auth/login", data={"username": "Service", "password": "Service"}
     )
     token = res.json()["access_token"]
@@ -139,24 +110,24 @@ def service_header_sync(test_client):
 
 
 @pytest.fixture(scope="function")
-async def alpha_admin_header(test_client_async, service_header):
-    """
-    Generate alpha admin authorization header for tests.
+async def alpha_admin_header(test_client, service_header):
+    """Generate alpha admin authorization header for tests.
+
     :return: Authorization header with alpha admin token
     """
     admin_login = f"alpha_{uuid.uuid4().hex[:4]}"
-    team_res = await test_client_async.post(
+    team_res = await test_client.post(
         "/db/teams/",
         json={"name": "Team Alpha", "team_admin_id": 1},
         headers=service_header,
     )
     team_id = team_res.json()["id"]
 
-    user_res = await test_client_async.post(
+    user_res = await test_client.post(
         "/db/users/",
         json={
             "login": admin_login,
-            "email": "alpha@lab.pl",
+            "email": f"{admin_login}@lab.pl",
             "user_type": "group_admin",
             "team_id": team_id,
             "name": "Adam",
@@ -166,10 +137,93 @@ async def alpha_admin_header(test_client_async, service_header):
     )
 
     user_data = user_res.json()
-    login_res = await test_client_async.post(
+    login_res = await test_client.post(
         "/auth/login",
         data={"username": admin_login, "password": user_data["generated_password"]},
     )
 
     token = login_res.json()["access_token"]
     return {"Authorization": f"Bearer {token}", "team_id": team_id}
+
+
+@pytest.fixture(scope="function")
+async def rbac_data_suite(test_client, service_header):
+    """Generata dummy data suite for RBAC testing.
+
+    :param test_client: AsyncClient for the FastAPI app
+    :param service_header: Service authorization header for tests
+    :return: Populated db
+    """
+    ac = test_client
+    h_service = service_header
+
+    resp = await ac.post(
+        "/db/teams/", json={"name": f"Team_A_{uuid.uuid4().hex[:4]}"}, headers=h_service
+    )
+    t_a = resp.json()["id"]
+
+    resp = await ac.post(
+        "/db/teams/", json={"name": f"Team_B_{uuid.uuid4().hex[:4]}"}, headers=h_service
+    )
+    t_b = resp.json()["id"]
+
+    u_a_login = f"user_a_{uuid.uuid4().hex[:4]}"
+    u_a_res = (
+        await ac.post(
+            "/db/users/",
+            json={
+                "login": u_a_login,
+                "email": f"{u_a_login}@lab.pl",
+                "user_type": "user",
+                "team_ids": [t_a],
+                "name": "User",
+                "surname": "A",
+            },
+            headers=h_service,
+        )
+    ).json()
+
+    u_a_pwd = u_a_res["generated_password"]
+    u_a_id = u_a_res["id"]
+
+    l_a = (
+        await ac.post("/auth/login", data={"username": u_a_login, "password": u_a_pwd})
+    ).json()
+    h_a = {"Authorization": f"Bearer {l_a['access_token']}"}
+
+    u_b_login = f"admin_b_{uuid.uuid4().hex[:4]}"
+    u_b_res = (
+        await ac.post(
+            "/db/users/",
+            json={
+                "login": u_b_login,
+                "email": f"{u_b_login}@lab.pl",
+                "user_type": "group_admin",
+                "team_ids": [t_b],
+                "name": "Admin",
+                "surname": "B",
+            },
+            headers=h_service,
+        )
+    ).json()
+
+    u_b_pwd = u_b_res["generated_password"]
+    u_b_id = u_b_res["id"]
+
+    l_b = (
+        await ac.post("/auth/login", data={"username": u_b_login, "password": u_b_pwd})
+    ).json()
+    h_b = {"Authorization": f"Bearer {l_b['access_token']}"}
+
+    return {
+        "team_a_id": t_a,
+        "team_b_id": t_b,
+        "user_a_id": u_a_id,
+        "user_a_login": u_a_login,
+        "user_a_password": u_a_pwd,
+        "user_a_header": h_a,
+        "admin_b_id": u_b_id,
+        "admin_b_login": u_b_login,
+        "admin_b_password": u_b_pwd,
+        "admin_b_header": h_b,
+    }

@@ -1,13 +1,17 @@
 """Redis service for caching using aioredis."""
+
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
 from dotenv import load_dotenv
-from fastapi import HTTPException, status
 from redis import RedisError
 
+from app.core.exceptions import ConflictError, ExternalServiceError
+
+logger = logging.getLogger(__name__)
 load_dotenv(".env/api.env")
 REDIS_URL = os.getenv("REDIS_URL")
 COLLECT_TIMEOUT = int(os.getenv("COLLECT_TIMEOUT"))
@@ -15,9 +19,10 @@ COLLECT_TIMEOUT = int(os.getenv("COLLECT_TIMEOUT"))
 
 # pylint: disable=too-few-public-methods
 class RedisClientManager:
-    """Singleton class to manage Redis Connection"""
+    """Singleton class to manage Redis Connection."""
 
     def __init__(self):
+        """Initialize fields."""
         self.client = None
         self._loop = None
 
@@ -47,7 +52,7 @@ class RedisClientManager:
                 if self._loop is current_loop:
                     await self.client.aclose()
             except Exception:
-                pass
+                logger.warning("Failed to close redis connection, ignoring.")
             finally:
                 self.client = None
                 self._loop = None
@@ -60,29 +65,29 @@ redis_manager = RedisClientManager()
 
 
 async def get_redis_client():
-    """
-    Get a singleton Redis client instance.
-    :return: aioredis Redis client
+    """Get a singleton Redis client instance.
+
+    :return: aioredis Redis client.
     """
     return await redis_manager.get_client()
 
 
 async def set_cache(key: str, value: str):
-    """
-    Set a value in Redis cache with an expiration time.
+    """Set a value in Redis cache with an expiration time.
+
     :param key: Cache key
     :param value: Cache value
-    :param expire: Expiration time in seconds
+    :param expire: Expiration time in seconds.
     """
     redis_client = await get_redis_client()
     await redis_client.set(key, value, ex=COLLECT_TIMEOUT)
 
 
 async def get_cache(key: str):
-    """
-    Get a value from Redis cache by key.
+    """Get a value from Redis cache by key.
+
     :param key: Search for value by key
-    :return: Value from redis cache
+    :return: Value from redis cache.
     """
     r = await get_redis_client()
     return await r.get(key)
@@ -92,13 +97,13 @@ async def get_cache(key: str):
 async def acquire_lock(
     lock_name: str, timeout: int = COLLECT_TIMEOUT, wait_timeout: int = 5
 ):
-    """
-    Context manager for Redis distributed lock.
+    """Context manager for Redis distributed lock.
+
     Uses shared Redis client connection.
     :param lock_name: Unique key for the lock, eg. lock:machine:1
     :param timeout: Auto-release time in seconds
     :param wait_timeout: Waiting for lock before dropping
-    :return: None
+    :return: None.
     """
     client = await get_redis_client()
     lock = client.lock(lock_name, timeout=timeout, blocking_timeout=wait_timeout)
@@ -108,16 +113,16 @@ async def acquire_lock(
     try:
         is_locked = await lock.acquire(blocking=True)
         if not is_locked:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Enitity is locked (being used by another user), wait a little.",
+            raise ConflictError(
+                f"Resource '{lock_name.replace('lock:', '').replace(':', '')}' "
+                f"is currently locked by another user. "
+                f"Please try again in a moment."
             )
         yield
 
     except RedisError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Redis service failed.",
+        raise ExternalServiceError(
+            service="Redis", detail="Distributed lock system failure."
         ) from e
 
     finally:
@@ -125,7 +130,4 @@ async def acquire_lock(
             try:
                 await lock.release()
             except RedisError as e:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Redis service failed.",
-                ) from e
+                logger.error(f"Failed to release redis lock '{lock_name}': {e}")

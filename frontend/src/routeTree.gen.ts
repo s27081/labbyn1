@@ -16,21 +16,22 @@ import { Route as AuthUserDashboardRouteImport } from './routes/_auth/user-dashb
 import { Route as AuthSettingsRouteImport } from './routes/_auth/settings'
 import { Route as AuthMapRouteImport } from './routes/_auth/map'
 import { Route as AuthImportExportRouteImport } from './routes/_auth/import-export'
-import { Route as AuthDocsRouteImport } from './routes/_auth/docs'
+import { Route as AuthDocumentationRouteImport } from './routes/_auth/documentation'
 import { Route as AuthAddItemsRouteImport } from './routes/_auth/add-items'
 import { Route as AuthUsersIndexRouteImport } from './routes/_auth/users/index'
 import { Route as AuthTeamsIndexRouteImport } from './routes/_auth/teams/index'
 import { Route as AuthLabsIndexRouteImport } from './routes/_auth/labs/index'
 import { Route as AuthInventoryIndexRouteImport } from './routes/_auth/inventory/index'
 import { Route as AuthHistoryIndexRouteImport } from './routes/_auth/history/index'
-import { Route as AuthDocsIndexRouteImport } from './routes/_auth/docs/index'
+import { Route as AuthDocumentationIndexRouteImport } from './routes/_auth/documentation/index'
 import { Route as AuthUsersUserIdRouteImport } from './routes/_auth/users/$userId'
 import { Route as AuthTeamsTeamIdRouteImport } from './routes/_auth/teams/$teamId'
+import { Route as AuthRacksRacksIdRouteImport } from './routes/_auth/racks/$racksId'
 import { Route as AuthMachinesMachineIdRouteImport } from './routes/_auth/machines/$machineId'
 import { Route as AuthLabsLabIdRouteImport } from './routes/_auth/labs/$labId'
 import { Route as AuthInventoryInventoryIdRouteImport } from './routes/_auth/inventory/$inventoryId'
 import { Route as AuthHistoryHistoryIdRouteImport } from './routes/_auth/history/$historyId'
-import { Route as AuthDocsDocIdRouteImport } from './routes/_auth/docs/$docId'
+import { Route as AuthDocumentationDocIdRouteImport } from './routes/_auth/documentation/$docId'
 import { Route as AuthAdminPanelUsersRouteImport } from './routes/_auth/admin-panel/users'
 import { Route as AuthAdminPanelTeamsRouteImport } from './routes/_auth/admin-panel/teams'
 import { Route as AuthAdminPanelMachinesRouteImport } from './routes/_auth/admin-panel/machines'
@@ -72,9 +73,9 @@ const AuthImportExportRoute = AuthImportExportRouteImport.update({
   path: '/import-export',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthDocsRoute = AuthDocsRouteImport.update({
-  id: '/docs',
-  path: '/docs',
+const AuthDocumentationRoute = AuthDocumentationRouteImport.update({
+  id: '/documentation',
+  path: '/documentation',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthAddItemsRoute = AuthAddItemsRouteImport.update({
@@ -107,10 +108,10 @@ const AuthHistoryIndexRoute = AuthHistoryIndexRouteImport.update({
   path: '/history/',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthDocsIndexRoute = AuthDocsIndexRouteImport.update({
+const AuthDocumentationIndexRoute = AuthDocumentationIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AuthDocsRoute,
+  getParentRoute: () => AuthDocumentationRoute,
 } as any)
 const AuthUsersUserIdRoute = AuthUsersUserIdRouteImport.update({
   id: '/users/$userId',
@@ -120,6 +121,11 @@ const AuthUsersUserIdRoute = AuthUsersUserIdRouteImport.update({
 const AuthTeamsTeamIdRoute = AuthTeamsTeamIdRouteImport.update({
   id: '/teams/$teamId',
   path: '/teams/$teamId',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthRacksRacksIdRoute = AuthRacksRacksIdRouteImport.update({
+  id: '/racks/$racksId',
+  path: '/racks/$racksId',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthMachinesMachineIdRoute = AuthMachinesMachineIdRouteImport.update({
@@ -143,10 +149,10 @@ const AuthHistoryHistoryIdRoute = AuthHistoryHistoryIdRouteImport.update({
   path: '/history/$historyId',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthDocsDocIdRoute = AuthDocsDocIdRouteImport.update({
+const AuthDocumentationDocIdRoute = AuthDocumentationDocIdRouteImport.update({
   id: '/$docId',
   path: '/$docId',
-  getParentRoute: () => AuthDocsRoute,
+  getParentRoute: () => AuthDocumentationRoute,
 } as any)
 const AuthAdminPanelUsersRoute = AuthAdminPanelUsersRouteImport.update({
   id: '/admin-panel/users',
@@ -184,7 +190,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
   '/login': typeof LoginRoute
   '/add-items': typeof AuthAddItemsRoute
-  '/docs': typeof AuthDocsRouteWithChildren
+  '/documentation': typeof AuthDocumentationRouteWithChildren
   '/import-export': typeof AuthImportExportRoute
   '/map': typeof AuthMapRoute
   '/settings': typeof AuthSettingsRoute
@@ -194,14 +200,15 @@ export interface FileRoutesByFullPath {
   '/admin-panel/machines': typeof AuthAdminPanelMachinesRoute
   '/admin-panel/teams': typeof AuthAdminPanelTeamsRoute
   '/admin-panel/users': typeof AuthAdminPanelUsersRoute
-  '/docs/$docId': typeof AuthDocsDocIdRoute
+  '/documentation/$docId': typeof AuthDocumentationDocIdRoute
   '/history/$historyId': typeof AuthHistoryHistoryIdRoute
   '/inventory/$inventoryId': typeof AuthInventoryInventoryIdRoute
   '/labs/$labId': typeof AuthLabsLabIdRoute
   '/machines/$machineId': typeof AuthMachinesMachineIdRoute
+  '/racks/$racksId': typeof AuthRacksRacksIdRoute
   '/teams/$teamId': typeof AuthTeamsTeamIdRoute
   '/users/$userId': typeof AuthUsersUserIdRoute
-  '/docs/': typeof AuthDocsIndexRoute
+  '/documentation/': typeof AuthDocumentationIndexRoute
   '/history/': typeof AuthHistoryIndexRoute
   '/inventory/': typeof AuthInventoryIndexRoute
   '/labs/': typeof AuthLabsIndexRoute
@@ -222,14 +229,15 @@ export interface FileRoutesByTo {
   '/admin-panel/machines': typeof AuthAdminPanelMachinesRoute
   '/admin-panel/teams': typeof AuthAdminPanelTeamsRoute
   '/admin-panel/users': typeof AuthAdminPanelUsersRoute
-  '/docs/$docId': typeof AuthDocsDocIdRoute
+  '/documentation/$docId': typeof AuthDocumentationDocIdRoute
   '/history/$historyId': typeof AuthHistoryHistoryIdRoute
   '/inventory/$inventoryId': typeof AuthInventoryInventoryIdRoute
   '/labs/$labId': typeof AuthLabsLabIdRoute
   '/machines/$machineId': typeof AuthMachinesMachineIdRoute
+  '/racks/$racksId': typeof AuthRacksRacksIdRoute
   '/teams/$teamId': typeof AuthTeamsTeamIdRoute
   '/users/$userId': typeof AuthUsersUserIdRoute
-  '/docs': typeof AuthDocsIndexRoute
+  '/documentation': typeof AuthDocumentationIndexRoute
   '/history': typeof AuthHistoryIndexRoute
   '/inventory': typeof AuthInventoryIndexRoute
   '/labs': typeof AuthLabsIndexRoute
@@ -242,7 +250,7 @@ export interface FileRoutesById {
   '/_auth': typeof AuthRouteWithChildren
   '/login': typeof LoginRoute
   '/_auth/add-items': typeof AuthAddItemsRoute
-  '/_auth/docs': typeof AuthDocsRouteWithChildren
+  '/_auth/documentation': typeof AuthDocumentationRouteWithChildren
   '/_auth/import-export': typeof AuthImportExportRoute
   '/_auth/map': typeof AuthMapRoute
   '/_auth/settings': typeof AuthSettingsRoute
@@ -253,14 +261,15 @@ export interface FileRoutesById {
   '/_auth/admin-panel/machines': typeof AuthAdminPanelMachinesRoute
   '/_auth/admin-panel/teams': typeof AuthAdminPanelTeamsRoute
   '/_auth/admin-panel/users': typeof AuthAdminPanelUsersRoute
-  '/_auth/docs/$docId': typeof AuthDocsDocIdRoute
+  '/_auth/documentation/$docId': typeof AuthDocumentationDocIdRoute
   '/_auth/history/$historyId': typeof AuthHistoryHistoryIdRoute
   '/_auth/inventory/$inventoryId': typeof AuthInventoryInventoryIdRoute
   '/_auth/labs/$labId': typeof AuthLabsLabIdRoute
   '/_auth/machines/$machineId': typeof AuthMachinesMachineIdRoute
+  '/_auth/racks/$racksId': typeof AuthRacksRacksIdRoute
   '/_auth/teams/$teamId': typeof AuthTeamsTeamIdRoute
   '/_auth/users/$userId': typeof AuthUsersUserIdRoute
-  '/_auth/docs/': typeof AuthDocsIndexRoute
+  '/_auth/documentation/': typeof AuthDocumentationIndexRoute
   '/_auth/history/': typeof AuthHistoryIndexRoute
   '/_auth/inventory/': typeof AuthInventoryIndexRoute
   '/_auth/labs/': typeof AuthLabsIndexRoute
@@ -274,7 +283,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/add-items'
-    | '/docs'
+    | '/documentation'
     | '/import-export'
     | '/map'
     | '/settings'
@@ -284,14 +293,15 @@ export interface FileRouteTypes {
     | '/admin-panel/machines'
     | '/admin-panel/teams'
     | '/admin-panel/users'
-    | '/docs/$docId'
+    | '/documentation/$docId'
     | '/history/$historyId'
     | '/inventory/$inventoryId'
     | '/labs/$labId'
     | '/machines/$machineId'
+    | '/racks/$racksId'
     | '/teams/$teamId'
     | '/users/$userId'
-    | '/docs/'
+    | '/documentation/'
     | '/history/'
     | '/inventory/'
     | '/labs/'
@@ -312,14 +322,15 @@ export interface FileRouteTypes {
     | '/admin-panel/machines'
     | '/admin-panel/teams'
     | '/admin-panel/users'
-    | '/docs/$docId'
+    | '/documentation/$docId'
     | '/history/$historyId'
     | '/inventory/$inventoryId'
     | '/labs/$labId'
     | '/machines/$machineId'
+    | '/racks/$racksId'
     | '/teams/$teamId'
     | '/users/$userId'
-    | '/docs'
+    | '/documentation'
     | '/history'
     | '/inventory'
     | '/labs'
@@ -331,7 +342,7 @@ export interface FileRouteTypes {
     | '/_auth'
     | '/login'
     | '/_auth/add-items'
-    | '/_auth/docs'
+    | '/_auth/documentation'
     | '/_auth/import-export'
     | '/_auth/map'
     | '/_auth/settings'
@@ -342,14 +353,15 @@ export interface FileRouteTypes {
     | '/_auth/admin-panel/machines'
     | '/_auth/admin-panel/teams'
     | '/_auth/admin-panel/users'
-    | '/_auth/docs/$docId'
+    | '/_auth/documentation/$docId'
     | '/_auth/history/$historyId'
     | '/_auth/inventory/$inventoryId'
     | '/_auth/labs/$labId'
     | '/_auth/machines/$machineId'
+    | '/_auth/racks/$racksId'
     | '/_auth/teams/$teamId'
     | '/_auth/users/$userId'
-    | '/_auth/docs/'
+    | '/_auth/documentation/'
     | '/_auth/history/'
     | '/_auth/inventory/'
     | '/_auth/labs/'
@@ -414,11 +426,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthImportExportRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/docs': {
-      id: '/_auth/docs'
-      path: '/docs'
-      fullPath: '/docs'
-      preLoaderRoute: typeof AuthDocsRouteImport
+    '/_auth/documentation': {
+      id: '/_auth/documentation'
+      path: '/documentation'
+      fullPath: '/documentation'
+      preLoaderRoute: typeof AuthDocumentationRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/add-items': {
@@ -463,12 +475,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthHistoryIndexRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/docs/': {
-      id: '/_auth/docs/'
+    '/_auth/documentation/': {
+      id: '/_auth/documentation/'
       path: '/'
-      fullPath: '/docs/'
-      preLoaderRoute: typeof AuthDocsIndexRouteImport
-      parentRoute: typeof AuthDocsRoute
+      fullPath: '/documentation/'
+      preLoaderRoute: typeof AuthDocumentationIndexRouteImport
+      parentRoute: typeof AuthDocumentationRoute
     }
     '/_auth/users/$userId': {
       id: '/_auth/users/$userId'
@@ -482,6 +494,13 @@ declare module '@tanstack/react-router' {
       path: '/teams/$teamId'
       fullPath: '/teams/$teamId'
       preLoaderRoute: typeof AuthTeamsTeamIdRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/racks/$racksId': {
+      id: '/_auth/racks/$racksId'
+      path: '/racks/$racksId'
+      fullPath: '/racks/$racksId'
+      preLoaderRoute: typeof AuthRacksRacksIdRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/machines/$machineId': {
@@ -512,12 +531,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthHistoryHistoryIdRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/docs/$docId': {
-      id: '/_auth/docs/$docId'
+    '/_auth/documentation/$docId': {
+      id: '/_auth/documentation/$docId'
       path: '/$docId'
-      fullPath: '/docs/$docId'
-      preLoaderRoute: typeof AuthDocsDocIdRouteImport
-      parentRoute: typeof AuthDocsRoute
+      fullPath: '/documentation/$docId'
+      preLoaderRoute: typeof AuthDocumentationDocIdRouteImport
+      parentRoute: typeof AuthDocumentationRoute
     }
     '/_auth/admin-panel/users': {
       id: '/_auth/admin-panel/users'
@@ -564,23 +583,22 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AuthDocsRouteChildren {
-  AuthDocsDocIdRoute: typeof AuthDocsDocIdRoute
-  AuthDocsIndexRoute: typeof AuthDocsIndexRoute
+interface AuthDocumentationRouteChildren {
+  AuthDocumentationDocIdRoute: typeof AuthDocumentationDocIdRoute
+  AuthDocumentationIndexRoute: typeof AuthDocumentationIndexRoute
 }
 
-const AuthDocsRouteChildren: AuthDocsRouteChildren = {
-  AuthDocsDocIdRoute: AuthDocsDocIdRoute,
-  AuthDocsIndexRoute: AuthDocsIndexRoute,
+const AuthDocumentationRouteChildren: AuthDocumentationRouteChildren = {
+  AuthDocumentationDocIdRoute: AuthDocumentationDocIdRoute,
+  AuthDocumentationIndexRoute: AuthDocumentationIndexRoute,
 }
 
-const AuthDocsRouteWithChildren = AuthDocsRoute._addFileChildren(
-  AuthDocsRouteChildren,
-)
+const AuthDocumentationRouteWithChildren =
+  AuthDocumentationRoute._addFileChildren(AuthDocumentationRouteChildren)
 
 interface AuthRouteChildren {
   AuthAddItemsRoute: typeof AuthAddItemsRoute
-  AuthDocsRoute: typeof AuthDocsRouteWithChildren
+  AuthDocumentationRoute: typeof AuthDocumentationRouteWithChildren
   AuthImportExportRoute: typeof AuthImportExportRoute
   AuthMapRoute: typeof AuthMapRoute
   AuthSettingsRoute: typeof AuthSettingsRoute
@@ -595,6 +613,7 @@ interface AuthRouteChildren {
   AuthInventoryInventoryIdRoute: typeof AuthInventoryInventoryIdRoute
   AuthLabsLabIdRoute: typeof AuthLabsLabIdRoute
   AuthMachinesMachineIdRoute: typeof AuthMachinesMachineIdRoute
+  AuthRacksRacksIdRoute: typeof AuthRacksRacksIdRoute
   AuthTeamsTeamIdRoute: typeof AuthTeamsTeamIdRoute
   AuthUsersUserIdRoute: typeof AuthUsersUserIdRoute
   AuthHistoryIndexRoute: typeof AuthHistoryIndexRoute
@@ -607,7 +626,7 @@ interface AuthRouteChildren {
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthAddItemsRoute: AuthAddItemsRoute,
-  AuthDocsRoute: AuthDocsRouteWithChildren,
+  AuthDocumentationRoute: AuthDocumentationRouteWithChildren,
   AuthImportExportRoute: AuthImportExportRoute,
   AuthMapRoute: AuthMapRoute,
   AuthSettingsRoute: AuthSettingsRoute,
@@ -622,6 +641,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthInventoryInventoryIdRoute: AuthInventoryInventoryIdRoute,
   AuthLabsLabIdRoute: AuthLabsLabIdRoute,
   AuthMachinesMachineIdRoute: AuthMachinesMachineIdRoute,
+  AuthRacksRacksIdRoute: AuthRacksRacksIdRoute,
   AuthTeamsTeamIdRoute: AuthTeamsTeamIdRoute,
   AuthUsersUserIdRoute: AuthUsersUserIdRoute,
   AuthHistoryIndexRoute: AuthHistoryIndexRoute,

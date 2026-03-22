@@ -1,154 +1,190 @@
 """Router for Disks Database API CRUD."""
 
 from typing import List
-from app.database import get_db
-from app.db.models import Disks, Machines
-from app.db.schemas import (
-    DiskCreate,
-    DiskResponse,
-    DiskUpdate,
-)
-from app.utils.redis_service import acquire_lock
-from app.auth.dependencies import RequestContext
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 
-router = APIRouter()
+from fastapi import APIRouter, Depends, Response, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.auth.dependencies import RequestContext
+from app.core.exceptions import AccessDeniedError, ObjectNotFoundError, ValidationError
+from app.database import get_async_db
+from app.db.models import Disks, Machines
+from app.db.schemas import DiskCreate, DiskResponse, DiskUpdate
+from app.utils.redis_service import acquire_lock
+
+router = APIRouter(prefix="/db", tags=["Disks"])
 
 
 @router.post(
-    "/db/disks/",
-    response_model=DiskCreate,
+    "/disks/",
+    response_model=DiskResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Disks", "Machines"],
 )
-def create_disk(
+async def create_disk(
     disk_data: DiskCreate,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Create new Disk
+    """Create new Disk.
+
     :param disk_data: Disk data
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Disk object
+    :return: Disk object.
     """
+    ctx.require_user()
 
     if not ctx.is_admin:
         if not getattr(disk_data, "machine_id", None):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Non-admin users must attach disks to a specific machine.",
+            raise AccessDeniedError(
+                "Non-admin users must attach disks to a specific machine."
             )
 
-    machine = db.query(Machines).filter(Machines.id == disk_data.machine_id)
-    machine = ctx.team_filter(machine, Machines).first()
+    stmt = select(Machines).where(Machines.id == disk_data.machine_id)
+    stmt = ctx.team_filter(stmt, Machines)
+    result = await db.execute(stmt)
+    machine = result.scalar_one_or_none()
 
     if not machine:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Target machine not found or access denied.",
-        )
+        raise ObjectNotFoundError("Machine for this disk")
 
-    obj = Disks(**disk_data.model_dump())
-    db.add(obj)
-    db.commit()
-    db.refresh(obj)
-    return obj
+    try:
+        obj = Disks(**disk_data.model_dump())
+        db.add(obj)
+        await db.commit()
+        await db.refresh(obj)
+        return obj
+    except Exception as e:
+        await db.rollback()
+        raise ValidationError(
+            f"Failed to add disk '{disk_data.name}' to machine '{machine.name}'"
+        ) from e
 
 
-@router.get("/db/disks/", response_model=List[DiskResponse], tags=["Disks"])
-def get_disks(db: Session = Depends(get_db), ctx: RequestContext = Depends()):
-    """
-    Fetch all Disks
+@router.get("/disks/", response_model=List[DiskResponse])
+async def get_disks(
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
+):
+    """Fetch all Disks.
+
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: List of all Disks
+    :return: List of all Disks.
     """
     ctx.require_user()
-    query = db.query(Disks).join(Machines)
-    query = ctx.team_filter(query, Machines)
-    return query.all()
+    stmt = select(Disks).join(Machines)
+    stmt = ctx.team_filter(stmt, Machines)
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
-@router.get("/db/disks/{disk_id}", response_model=DiskResponse, tags=["Disks"])
-def get_disk_by_id(
-    disk_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+@router.get("/disks/{disk_id}", response_model=DiskResponse)
+async def get_disk_by_id(
+    disk_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Fetch specific disk by ID
+    """Fetch specific disk by ID.
+
     :param disk_id: Disk ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Disk object
+    :return: Disk object.
     """
     ctx.require_user()
-    query = db.query(Disks).join(Machines).filter(Disks.id == disk_id)
-    query = ctx.team_filter(query, Machines)
-    disk = query.first()
+    stmt = select(Disks).join(Machines).filter(Disks.id == disk_id)
+    stmt = ctx.team_filter(stmt, Machines)
+    result = await db.execute(stmt)
+    disk = result.scalar_one_or_none()
 
     if not disk:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Disk not found"
-        )
+        raise ObjectNotFoundError("Disk")
     return disk
 
 
-@router.put("/db/disks/{disk_id}", response_model=DiskResponse, tags=["Disks"])
+@router.patch("/disks/{disk_id}", response_model=DiskResponse)
 async def update_disk(
     disk_id: int,
     disk_data: DiskUpdate,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Update disk
+    """Update disk.
+
     :param disk_id: Disk ID
     :param disk_data: Disk data schema
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: Updated disk
+    :return: Updated disk.
     """
     ctx.require_user()
     async with acquire_lock(f"disk_lock:{disk_id}"):
-        query = db.query(Disks).join(Machines).filter(Disks.id == disk_id)
-        query = ctx.team_filter(query, Machines)
-        disk = query.first()
+        stmt = (
+            select(Disks)
+            .options(selectinload(Disks.machine))
+            .join(Machines)
+            .filter(Disks.id == disk_id)
+        )
+        stmt = ctx.team_filter(stmt, Machines)
+        result = await db.execute(stmt)
+        disk = result.scalar_one_or_none()
+
         if not disk:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Disk not found"
-            )
-        for k, v in disk_data.model_dump(exclude_unset=True).items():
-            setattr(disk, k, v)
-        db.commit()
-        db.refresh(disk)
-        return disk
+            raise ObjectNotFoundError("Disk")
+
+        try:
+            for k, v in disk_data.model_dump(exclude_unset=True).items():
+                setattr(disk, k, v)
+            await db.commit()
+            await db.refresh(disk)
+            return disk
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Update failed for disk '{disk.name}' on {disk.machine.name}"
+            ) from e
 
 
 @router.delete(
-    "/db/disks/{disk_id}",
+    "/disks/{disk_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=["Disks"],
 )
 async def delete_disk(
-    disk_id: int, db: Session = Depends(get_db), ctx: RequestContext = Depends()
+    disk_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
 ):
-    """
-    Delete disk
+    """Delete disk.
+
     :param disk_id: Disk ID
     :param db: Active database session
     :param ctx: Request context for user and team info
-    :return: None
+    :return: 204 No Content as success
     """
     ctx.require_user()
     async with acquire_lock(f"disk_lock:{disk_id}"):
-        query = db.query(Disks).join(Machines).filter(Disks.id == disk_id)
-        query = ctx.team_filter(query, Machines)
-        disk = query.first()
+        stmt = (
+            select(Disks)
+            .options(selectinload(Disks.machine))
+            .join(Machines)
+            .filter(Disks.id == disk_id)
+        )
+        stmt = ctx.team_filter(stmt, Machines)
+        result = await db.execute(stmt)
+        disk = result.scalar_one_or_none()
+
         if not disk:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Disk not found"
-            )
-        db.delete(disk)
-        db.commit()
+            raise ObjectNotFoundError("Disk")
+
+        try:
+            await db.delete(disk)
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            await db.rollback()
+            raise ValidationError(
+                f"Could not delete disk '{disk.name}' from {disk.machine.name}"
+            ) from e

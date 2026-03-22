@@ -5,8 +5,8 @@ export function generateDefaultLabLoadout() {
   const walls: Array<Wall> = []
 
   // Konfiguracja
-  const HALL_ROWS = 3 // Ilość hal w pionie
-  const HALL_COLS = 3 // Ilość hal w poziomie
+  const HALL_ROWS = 2 // Ilość hal w pionie
+  const HALL_COLS = 2 // Ilość hal w poziomie
 
   const ROOM_WIDTH = 2200 // Szerokość jednej hali
   const ROOM_HEIGHT = 1400 // Wysokość jednej hali
@@ -16,7 +16,7 @@ export function generateDefaultLabLoadout() {
   // Helper do ścian
   const addWall = (x1: number, y1: number, x2: number, y2: number) => {
     walls.push({
-      id: `w-${Math.random().toString(36).substr(2, 9)}`,
+      id: `WALL-${Math.random().toString(36).substr(2, 9)}`,
       x1,
       y1,
       x2,

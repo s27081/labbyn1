@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import type {
+  AutoDiscoverPayload,
   MachineUpdate,
   MachinesResponse,
   MetadataResponse,
@@ -15,6 +15,7 @@ const PATHS = {
   SETUP_AGENT: '/ansible/setup_agent',
   PROMETHEUS: '/prometheus/target',
   DETAIL: (id: string | number) => `/db/machines/${id}`,
+  REFRESH: (id: string | number) => `/ansible/machine/${id}/refresh`,
 }
 
 export const handlePlatformSubmission = async (values: PlatformFormValues) => {
@@ -37,19 +38,19 @@ export const handlePlatformSubmission = async (values: PlatformFormValues) => {
         PATHS.MACHINES,
         {
           name: values.name || values.hostname,
-          localization_id: values.location || 1, // Default room ID
+          localization_id: values.localization_id || 1, // Default room ID
           metadata_id: metadata.id,
-          ip_address: values.ip || null,
-          mac_address: values.mac || null,
+          ip_address: values.ip_address || null,
+          mac_address: values.mac_address || null,
           pdu_port: values.pdu_port || null,
-          team_id: values.team || null,
+          team_id: values.team_id || null,
           os: values.os || null,
-          serial_number: values.sn || null,
+          serial_number: values.serial_number || null,
           note: values.note || null,
-          cpus: values.cpu || [],
+          cpus: values.cpus || [],
           ram: values.ram || null,
-          disks: values.disk || [],
-          shelf_id: values.layout || null,
+          disks: values.disks || [],
+          shelf_id: values.shelf_id || null,
         },
       )
       results.push(machine)
@@ -95,16 +96,31 @@ export const useUpdateMachineMutation = (machineId: string | number) => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (machineData: MachineUpdate) => {
-      const { data } = await api.put(PATHS.DETAIL(machineId), machineData)
-      return data
-    },
+    mutationKey: ['update-machine'],
+    mutationFn: (machineData: MachineUpdate) =>
+      api.patch(PATHS.DETAIL(machineId), machineData),
     onSuccess: () => {
-      toast.success('Machine updated successfully')
       queryClient.invalidateQueries({ queryKey: ['machines'] })
-      queryClient.invalidateQueries({
-        queryKey: ['machines', String(machineId)],
-      })
     },
   })
+}
+
+export const useDeleteMachineMutation = (machineId: string | number) => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ['delete-machine'],
+    mutationFn: () => api.delete(PATHS.DETAIL(machineId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['machines'] })
+    },
+  })
+}
+
+export async function autoDiscoverMutation(
+  machineId: string | number,
+  formData: AutoDiscoverPayload,
+) {
+  const { data } = await api.post(PATHS.REFRESH(machineId), formData)
+  return data
 }
