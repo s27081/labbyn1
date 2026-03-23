@@ -1283,11 +1283,17 @@ class DiscoveryRequest(BaseModel):
     extra_vars: Optional[dict] = {}
 
 
-class PrometheusTarget(BaseModel):
-    """Pydantic model for Prometheus target."""
+class PrometheusBase(BaseModel):
+    """Base model for Prometheus target."""
 
     instance: str
+
+
+class PrometheusTarget(PrometheusBase):
+    """Pydantic model for Prometheus target."""
+
     labels: dict
+    team_id: Optional[str] = None
 
 
 # ==========================

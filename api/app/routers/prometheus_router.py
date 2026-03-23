@@ -7,7 +7,7 @@ from typing import List, Optional
 from urllib.parse import unquote
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, Response, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
@@ -15,18 +15,17 @@ from starlette import status
 from app.auth.auth_config import get_database_strategy
 from app.auth.dependencies import RequestContext
 from app.auth.manager import get_user_manager
-from app.core.exceptions import (
-    ValidationError,
-)
+from app.core.exceptions import AccessDeniedError, ValidationError
 
 from ..database import get_async_db
-from ..db.models import Machines
-from ..db.schemas import PrometheusTarget
+from ..db.models import Machines, Teams
+from ..db.schemas import PrometheusBase, PrometheusTarget
 from ..utils.prometheus_service import (
     DEFAULT_QUERIES,
     TargetSaveError,
     add_prometheus_target,
     fetch_prometheus_metrics,
+    remove_prometheus_target,
 )
 from ..utils.redis_service import get_cache, set_cache
 
@@ -107,7 +106,6 @@ async def websocket_endpoint(
     :param instance: Optional instance filter
     :return: Fetch ws data
     """
-
     manager.websocket = ws
     await ws.accept()
 
@@ -324,7 +322,25 @@ async def add_prometheus_new_target(
     :return: Success message.
     """
     ctx.require_user()
+
     try:
+        selected_team_id = target.team_id
+
+        if not selected_team_id:
+            if len(ctx.team_ids) == 1:
+                selected_team_id = ctx.team_ids[0]
+            elif len(ctx.team_ids) > 1:
+                raise ValidationError("You are in multiple teams, please select one.")
+            else:
+                if not ctx.is_admin:
+                    raise AccessDeniedError("You are not in any team.")
+        if selected_team_id:
+            await ctx.validate_team_access(selected_team_id)
+
+            stmt = select(Teams.name).where(Teams.id == selected_team_id)
+            res = await ctx.db.execute(stmt)
+            team_name = res.scalar_one_or_none()
+            target.labels["team"] = team_name or f"team_{selected_team_id}"
 
         if ":" not in target.instance or ":9090" in target.instance:
             target.instance = f"{target.instance}:9100"
@@ -332,3 +348,42 @@ async def add_prometheus_new_target(
     except TargetSaveError as e:
         raise ValidationError(f"Failed to save target '{target.instance}'") from e
     return {"message": "Target added successfully", "target": entry}
+
+
+@router.delete("/prometheus/target", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_prometheus_target(
+    target: PrometheusBase,
+    db: AsyncSession = Depends(get_async_db),
+    ctx: RequestContext = Depends(RequestContext.create),
+):
+    """Add a new target to Prometheus targets file.
+
+    :param target: Prometheus istnace object containing instance and labels
+    :param db: Active database session
+    :param ctx: Request context for user and team info
+    :return: Success message.
+    """
+    ctx.require_user()
+
+    raw_instance = target.instance.strip()
+    target_to_remove = unquote(raw_instance)
+
+    if ":" not in target_to_remove or ":9090" in target_to_remove:
+        target_to_remove = f"{target_to_remove}:9100"
+
+    host_only = _extract_host_from_instance(target_to_remove)
+
+    if not ctx.is_admin:
+        query = select(Machines.name).filter(Machines.name == host_only)
+        query = ctx.team_filter(query, Machines)
+        result = await db.execute(query)
+        machine = result.scalar_one_or_none()
+
+        if not machine:
+            raise AccessDeniedError(
+                f"Access denied or machine '{host_only}' not found in your team."
+            )
+
+        await remove_prometheus_target(target_to_remove)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
