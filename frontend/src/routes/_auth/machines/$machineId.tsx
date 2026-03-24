@@ -68,7 +68,6 @@ function MachineDetailsPage() {
 
   const updateMachine = useUpdateMachineMutation(machineId)
   const deleteMachine = useDeleteMachineMutation(machineId)
-  console.log(machine);
   
   const { mutate: createShelf } = useCreateShelfMutation()
   // TO DO: make shelf creation auto select the created shelf for the machine
@@ -443,7 +442,7 @@ function MachineDetailsPage() {
                                 >
                                   <span>{disk.name}</span>
                                   <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-bold">
-                                    {addTextToString(disk.capacity, 'GB')}
+                                    {disk.capacity}
                                   </span>
                                 </div>
                               ))
