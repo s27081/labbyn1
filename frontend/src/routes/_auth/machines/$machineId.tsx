@@ -42,7 +42,7 @@ import {
 import { SubPageTemplate } from '@/components/subpage-template'
 import { SubpageCard } from '@/components/subpage-card'
 import { TagList } from '@/components/tag-list'
-import { addTextToString, convertTimestampToDate } from '@/utils'
+import { convertTimestampToDate } from '@/utils'
 import { AutoDiscovertDialog } from '@/components/auto-discovery-dialog'
 import { teamsQueryOptions } from '@/integrations/teams/teams.query'
 import { labsBaseQueryOptions } from '@/integrations/labs/labs.query'
@@ -68,7 +68,7 @@ function MachineDetailsPage() {
 
   const updateMachine = useUpdateMachineMutation(machineId)
   const deleteMachine = useDeleteMachineMutation(machineId)
-  
+
   const { mutate: createShelf } = useCreateShelfMutation()
   // TO DO: make shelf creation auto select the created shelf for the machine
   const handleShelfCreation = (rackId: number) => {
@@ -403,15 +403,14 @@ function MachineDetailsPage() {
                                   )
                                 }}
                               />
-                            ) : formFiled.name === 'added_on' ? 
-                            ( 
+                            ) : formFiled.name === 'added_on' ? (
                               <span className="truncate">
                                 {typeof rawValue === 'string' ||
                                 typeof rawValue === 'number'
                                   ? rawValue
                                   : '—'}
-                                </span>
-                            ) :(
+                              </span>
+                            ) : (
                               <form.Field
                                 name={formFiled.name as any}
                                 children={(field) => (
@@ -761,19 +760,19 @@ function MachineDetailsPage() {
                       label: 'Map view',
                       sub: 'Location details',
                       to: machine.map_link,
-                      condition: machine.rack_id != null
+                      condition: machine.rack_id != null,
                     },
                     {
                       label: 'Rack view',
                       sub: 'Hardware configuration',
                       to: machine.rack_link,
-                      condition: machine.rack_id != null
+                      condition: machine.rack_id != null,
                     },
                     {
                       label: 'Grafana dashboard',
                       sub: 'System metrics',
                       to: machine.grafana_link,
-                      condition: machine.monitoring 
+                      condition: machine.monitoring,
                     },
                   ].map((item, index) => {
                     const isExternal = item.to.startsWith('http')
@@ -782,28 +781,28 @@ function MachineDetailsPage() {
                     const extraProps = isExternal
                       ? { href: item.to, target: '_blank', rel: 'noreferrer' }
                       : { to: item.to }
-                    if (item.condition){
-                    return (
-                      <Component
-                        key={index}
-                        {...(extraProps as any)}
-                        className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent hover:text-accent-foreground transition-colors group"
-                      >
-                        <div className="flex flex-col gap-1">
-                          <span className="font-bold text-sm tracking-tight">
-                            {item.label}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground uppercase font-semibold opacity-70">
-                            {item.sub}
-                          </span>
-                        </div>
+                    if (item.condition) {
+                      return (
+                        <Component
+                          key={index}
+                          {...(extraProps as any)}
+                          className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent hover:text-accent-foreground transition-colors group"
+                        >
+                          <div className="flex flex-col gap-1">
+                            <span className="font-bold text-sm tracking-tight">
+                              {item.label}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground uppercase font-semibold opacity-70">
+                              {item.sub}
+                            </span>
+                          </div>
 
-                        <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-                      </Component>
-                    )
-                  } else {
-                    return null
-                  }
+                          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                        </Component>
+                      )
+                    } else {
+                      return null
+                    }
                   })}
                 </div>
               </>

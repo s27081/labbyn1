@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { HatGlasses, Loader2, RefreshCcw } from 'lucide-react'
 import { useForm } from '@tanstack/react-form'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
+import { Separator } from './ui/separator'
+import type { ApiMachineInfo } from '@/integrations/machines/machines.types'
 import {
   Dialog,
   DialogClose,
@@ -17,44 +18,39 @@ import {
 import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { useDeployAgent, useDeleteAgent } from '@/integrations/machines/machines.mutation'
+import {
+  useDeleteAgent,
+  useDeployAgent,
+} from '@/integrations/machines/machines.mutation'
 import { zodValidate } from '@/utils/index'
-import type { ApiMachineInfo } from '@/integrations/machines/machines.types'
-import { Separator } from './ui/separator'
 
 const schemas = {
   username: z.string().min(1, 'Username is required'),
   password: z.string().min(1, 'Password is required'),
 }
 
-export function MachineAgentDialog({
-  machine
-}: {
-  machine : ApiMachineInfo
-}) {
+export function MachineAgentDialog({ machine }: { machine: ApiMachineInfo }) {
   const [open, setOpen] = useState(false)
 
-  const queryClient = useQueryClient()
-
-  const deployMutation = useDeployAgent();
-  const deleteMutation = useDeleteAgent(machine.id);
+  const deployMutation = useDeployAgent()
+  const deleteMutation = useDeleteAgent(machine.id)
 
   const form = useForm({
     defaultValues: {
       username: '',
       password: '',
-      hostname: machine.name || machine.ip_address
+      host: machine.name || machine.ip_address,
     },
     onSubmit: async ({ value }) => {
       if (machine.monitoring) {
         await deleteMutation.mutateAsync(value)
-        toast.success('Agent deleted successfully');
+        toast.success('Agent deleted successfully')
       } else {
         await deployMutation.mutateAsync(value)
-        toast.success('Agent deployed successfully');
+        toast.success('Agent deployed successfully')
       }
-      setOpen(false);
-      form.reset();
+      setOpen(false)
+      form.reset()
     },
   })
   const isPending = deployMutation.isPending || deleteMutation.isPending
@@ -77,7 +73,8 @@ export function MachineAgentDialog({
         </DialogHeader>
         <Separator />
         <div className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-            Agent status: {machine.monitoring ? "Installed on platform" : "Not found"}
+          Agent status:{' '}
+          {machine.monitoring ? 'Installed on platform' : 'Not found'}
         </div>
         <form
           onSubmit={(e) => {
@@ -138,10 +135,7 @@ export function MachineAgentDialog({
             <form.Subscribe
               selector={(state) => [state.canSubmit]}
               children={([canSubmit]) => (
-                <Button
-                  type="submit"
-                  disabled={!canSubmit || isPending}
-                >
+                <Button type="submit" disabled={!canSubmit || isPending}>
                   {isPending ? (
                     <>
                       <Loader2 className="animate-spin" />
@@ -150,7 +144,7 @@ export function MachineAgentDialog({
                   ) : (
                     <>
                       <RefreshCcw />
-                      {machine.monitoring ? "Delete" : "Deploy"}
+                      {machine.monitoring ? 'Delete' : 'Deploy'}
                     </>
                   )}
                 </Button>
