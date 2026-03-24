@@ -50,6 +50,7 @@ import { racksBaseListQueryOptions } from '@/integrations/racks/racks.query'
 import { singleShelfQueryOptions } from '@/integrations/shelves/shelves.query'
 import { useCreateShelfMutation } from '@/integrations/shelves/shelves.mutation'
 import { PlatformWebsocket } from '@/components/platform-websocket'
+import { MachineAgentDialog } from '@/components/machine-agent-dialog'
 
 export const Route = createFileRoute('/_auth/machines/$machineId')({
   component: MachineDetailsPage,
@@ -178,6 +179,7 @@ function MachineDetailsPage() {
             machineId={machineId}
             machineHostname={machine.name}
           />
+          <MachineAgentDialog machine={machine} />
           {/* User General info */}
           <SubpageCard
             title={'System Information'}

@@ -16,6 +16,7 @@ const PATHS = {
   PROMETHEUS: '/prometheus/target',
   DETAIL: (id: string | number) => `/db/machines/${id}`,
   REFRESH: (id: string | number) => `/ansible/machine/${id}/refresh`,
+  REMOVE_AGENT: (id: string | number) => `/ansible/machine/${id}/cleanup`
 }
 
 export const handlePlatformSubmission = async (values: PlatformFormValues) => {
@@ -123,4 +124,72 @@ export async function autoDiscoverMutation(
 ) {
   const { data } = await api.post(PATHS.REFRESH(machineId), formData)
   return data
+}
+
+export const useDeployAgent = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: ['deploy-agent'],
+    mutationFn: async (formData) => {
+      const ansiblePayload = {
+        host: formData.hostname,
+        extra_vars: {
+          ansible_user: formData.username,
+          ansible_password: formData.password,
+          ansible_become_password: formData.password,
+        },
+      };
+
+      const deployResponse = await api.post(PATHS.SETUP_AGENT, ansiblePayload);
+
+      const prometheusResponse = await api.post(PATHS.PROMETHEUS, {
+        instance: `${formData.hostname}:9100`,
+        labels: { env: 'virtual', host: formData.hostname, role: 'virtual' },
+      });
+      const discoveryResponse = await api.post(PATHS.DISCOVERY, {
+      hosts: [formData.hostname],
+      extra_vars: ansiblePayload.extra_vars,
+    })
+
+      return { deployResponse, prometheusResponse, discoveryResponse };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['machines'] });
+    },
+  });
+}
+
+export const useDeleteAgent = (machineId: string | number) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: ['delete-agent'],
+    mutationFn: async (formData) => {
+      const ansiblePayload = {
+        host: formData.hostname,
+        extra_vars: {
+          ansible_user: formData.username,
+          ansible_password: formData.password,
+          ansible_become_password: formData.password,
+        },
+      };
+
+      const removeResponse = await api.post(PATHS.REMOVE_AGENT(machineId), ansiblePayload);
+
+      const prometheusResponse = await api.delete(PATHS.PROMETHEUS, {
+        data: {instance: `${formData.hostname}`}
+      });
+
+      const discoveryResponse = await api.post(PATHS.DISCOVERY, {
+      hosts: [formData.hostname],
+      extra_vars: ansiblePayload.extra_vars,
+    })
+
+      return { removeResponse, prometheusResponse, discoveryResponse };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['machines'] });
+    },
+  });
 }
