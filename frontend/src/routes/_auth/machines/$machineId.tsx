@@ -67,6 +67,8 @@ function MachineDetailsPage() {
 
   const updateMachine = useUpdateMachineMutation(machineId)
   const deleteMachine = useDeleteMachineMutation(machineId)
+  console.log(machine);
+  
   const { mutate: createShelf } = useCreateShelfMutation()
   // TO DO: make shelf creation auto select the created shelf for the machine
   const handleShelfCreation = (rackId: number) => {
@@ -400,7 +402,15 @@ function MachineDetailsPage() {
                                   )
                                 }}
                               />
-                            ) : (
+                            ) : formFiled.name === 'added_on' ? 
+                            ( 
+                              <span className="truncate">
+                                {typeof rawValue === 'string' ||
+                                typeof rawValue === 'number'
+                                  ? rawValue
+                                  : '—'}
+                                </span>
+                            ) :(
                               <form.Field
                                 name={formFiled.name as any}
                                 children={(field) => (
@@ -750,16 +760,19 @@ function MachineDetailsPage() {
                       label: 'Map view',
                       sub: 'Location details',
                       to: machine.map_link,
+                      condition: machine.rack_id != null
                     },
                     {
                       label: 'Rack view',
                       sub: 'Hardware configuration',
                       to: machine.rack_link,
+                      condition: machine.rack_id != null
                     },
                     {
                       label: 'Grafana dashboard',
                       sub: 'System metrics',
                       to: machine.grafana_link,
+                      condition: machine.monitoring 
                     },
                   ].map((item, index) => {
                     const isExternal = item.to.startsWith('http')
@@ -768,6 +781,7 @@ function MachineDetailsPage() {
                     const extraProps = isExternal
                       ? { href: item.to, target: '_blank', rel: 'noreferrer' }
                       : { to: item.to }
+                    if (item.condition){
                     return (
                       <Component
                         key={index}
@@ -786,6 +800,9 @@ function MachineDetailsPage() {
                         <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
                       </Component>
                     )
+                  } else {
+                    return null
+                  }
                   })}
                 </div>
               </>
