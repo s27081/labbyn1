@@ -384,6 +384,6 @@ async def delete_prometheus_target(
                 f"Access denied or machine '{host_only}' not found in your team."
             )
 
-        await remove_prometheus_target(target_to_remove)
+    await remove_prometheus_target(target_to_remove)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
