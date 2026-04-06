@@ -19,7 +19,7 @@ def driver():
     yield driver
     driver.quit()
 
-
+#test
 def get_element(driver, element_name):
     return driver.find_elements(By.CSS_SELECTOR, element_name)
 
