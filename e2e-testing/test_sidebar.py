@@ -27,7 +27,9 @@ def get_element(driver, element_name):
 def login(driver, username="Service", password="Service", timeout=10):
     wait = WebDriverWait(driver, timeout)
     username_input = wait.until(
-        EC.visibility_of_element_located((By.CSS_SELECTOR, 'input[placeholder="Enter your name"]'))
+        EC.visibility_of_element_located(
+            (By.CSS_SELECTOR, 'input[placeholder="Enter your name"]')
+        )
     )
     password_input = wait.until(
         EC.visibility_of_element_located((By.CSS_SELECTOR, 'input[name="password"]'))
@@ -49,7 +51,7 @@ def get_sidebar_elements(driver):
         By.XPATH,
         '//div[@data-slot="sidebar-group-label" and normalize-space()="Overview"]'
         '/ancestor::*[@data-slot="sidebar-group"]'
-        '//*[@data-slot="sidebar-menu-button"]'
+        '//*[@data-slot="sidebar-menu-button"]',
     )
 
 
