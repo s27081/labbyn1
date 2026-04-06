@@ -26,3 +26,10 @@ services:
   redis:
     ports:
       - "6379:6379"
+  e2e-tests:
+    build:
+      context: ./e2e-testing
+    depends_on:
+      - frontend
+    volumes:
+      - .:/code

@@ -6,20 +6,25 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-BASE_URL = "http://localhost:3000"
+BASE_URL = "http://frontend:3000"
 
 
 @pytest.fixture(scope="session")
 def driver():
     web_options = Options()
     web_options.add_argument("--kiosk")
+
+    web_options.add_argument("--headless") 
+    web_options.add_argument("--no-sandbox")
+    web_options.add_argument("--disable-dev-shm-usage")
+    
     driver = webdriver.Chrome(options=web_options)
     driver.get(BASE_URL)
 
     yield driver
     driver.quit()
 
-
+#test
 def get_element(driver, element_name):
     return driver.find_elements(By.CSS_SELECTOR, element_name)
 
