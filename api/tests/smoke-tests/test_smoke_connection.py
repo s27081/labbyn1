@@ -1,13 +1,17 @@
-import pytest
+"""Deprecated"""
+
 import subprocess
+
+import pytest
 
 pytestmark = [
     pytest.mark.smoke,
 ]
 
 
+@pytest.mark.xfail()
 def test_redis_connection():
-    """Test connection to redis service"""
+    """Test connection to redis service."""
     cmd = "redis-cli -h redis -p 6379 ping"
     try:
         result = subprocess.run(

@@ -1,8 +1,8 @@
-import { ArrowUpDown, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { DataTable } from './ui/data-table'
+import { DataTableColumnHeader } from './data-table/column-header'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Document } from '@/types/types'
-
 import { Button } from '@/components/ui/button'
 
 interface DocumentListProps {
@@ -22,61 +22,35 @@ export function DocumentList({
 }: DocumentListProps) {
   const columns: Array<ColumnDef<Document>> = [
     {
-      accessorKey: 'name',
+      accessorKey: 'title',
       header: ({ column }) => {
-        return (
-          <Button
-            variant="link"
-            className="has-[>svg]:px-0"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
-            Name
-            <ArrowUpDown className="ml-1 h-3 w-3" />
-          </Button>
-        )
+        return <DataTableColumnHeader column={column} title="Title" />
       },
       cell: ({ row }) => (
-        <div className="font-medium truncate max-w-[150px]">
-          {row.getValue('name')}
+        <div className="font-medium truncate max-w-60">
+          {row.getValue('title')}
         </div>
       ),
     },
     {
-      accessorKey: 'createdBy',
+      accessorKey: 'author',
       header: ({ column }) => {
-        return (
-          <Button
-            variant="link"
-            className="has-[>svg]:px-0"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
-            Author
-            <ArrowUpDown className="ml-1 h-3 w-3" />
-          </Button>
-        )
+        return <DataTableColumnHeader column={column} title="Author" />
       },
       cell: ({ row }) => (
-        <div className="text-muted-foreground truncate max-w-[100px]">
-          {row.getValue('createdBy')}
+        <div className="text-muted-foreground truncate max-w-25">
+          {row.getValue('author')}
         </div>
       ),
     },
     {
-      accessorKey: 'updatedAt',
+      accessorKey: 'modified_on',
       header: ({ column }) => {
-        return (
-          <Button
-            variant="link"
-            className="has-[>svg]:px-0"
-            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-          >
-            Updated
-            <ArrowUpDown className="ml-1 h-3 w-3" />
-          </Button>
-        )
+        return <DataTableColumnHeader column={column} title="Last Updated" />
       },
       cell: ({ row }) => {
-        const date = new Date(row.getValue('updatedAt'))
+        const dateValue = row.original.modified_on || row.original.added_on
+        const date = new Date(dateValue)
         return (
           <div className="text-xs text-muted-foreground whitespace-nowrap">
             {date.toLocaleDateString()}
@@ -94,10 +68,10 @@ export function DocumentList({
             className="h-6 w-6 text-muted-foreground hover:text-destructive"
             onClick={(e) => {
               e.stopPropagation()
-              onDeleteDocument(row.original.id)
+              onDeleteDocument(String(row.original.id))
             }}
           >
-            <Trash2 className="h-3 w-3" />
+            <Trash2 />
           </Button>
         </div>
       ),
@@ -109,11 +83,11 @@ export function DocumentList({
       data={documents}
       columns={columns}
       onRowClick={onSelectDocument}
-      selectedId={selectedDoc?.id}
+      selectedId={selectedDoc?.id.toString()}
       actionElement={
-        <Button onClick={onCreateDocument} className="w-full">
-          <Plus className="mr-2 h-4 w-4" />
-          New Document
+        <Button onClick={onCreateDocument} variant={'outline'}>
+          <Plus />
+          Create new document
         </Button>
       }
     />

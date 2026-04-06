@@ -1,28 +1,38 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Document } from '@/types/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card } from '@/components/ui/card'
+import { useDocsContext } from '@/routes/_auth/documentation/-context'
 
 interface DocumentEditorProps {
   document: Document
   onSave: (doc: Document) => void
   onCancel: () => void
+  onDirtyChange?: (isDirty: boolean) => void
 }
 
 export function DocumentEditor({
   document,
-  onSave,
   onCancel,
+  onDirtyChange,
 }: DocumentEditorProps) {
-  const [name, setName] = useState(document.name)
+  const { handleSave, isSaving } = useDocsContext()
+  const [title, setTitle] = useState(document.title)
   const [content, setContent] = useState(document.content)
 
-  const handleSave = () => {
-    onSave({
+  useEffect(() => {
+    const isDirty = title !== document.title || content !== document.content
+    if (onDirtyChange) {
+      onDirtyChange(isDirty)
+    }
+  }, [title, content, document, onDirtyChange])
+
+  const onSaveClick = () => {
+    handleSave({
       ...document,
-      name: name || 'Untitled',
+      title: title || 'Untitled',
       content,
     })
   }
@@ -32,8 +42,8 @@ export function DocumentEditor({
       <div className="space-y-2">
         <label className="text-sm font-medium">Document Title</label>
         <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           placeholder="Enter document title"
           className="h-9"
         />
@@ -50,8 +60,8 @@ export function DocumentEditor({
       </div>
 
       <div className="flex gap-2 pt-4">
-        <Button onClick={handleSave} variant="default">
-          Save Document
+        <Button onClick={onSaveClick} variant="default" disabled={isSaving}>
+          {isSaving ? 'Saving...' : 'Save Document'}
         </Button>
         <Button onClick={onCancel} variant="outline">
           Cancel

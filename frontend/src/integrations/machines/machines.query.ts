@@ -1,0 +1,44 @@
+import { queryOptions } from '@tanstack/react-query'
+import type {
+  ApiMachineInfo,
+  ApiMachineItem,
+  ApiMachineResponse,
+} from './machines.types'
+import api from '@/lib/api'
+
+const PATHS = {
+  BASE: '/db/machines',
+  SINGLE: (id: string) => `/db/machines/${id}`,
+  SINGLE_INFO: (id: string) => `/db/machines/${id}/full`,
+}
+
+// Fetch all machines
+export const machinesQueryOptions = queryOptions({
+  queryKey: ['machines'],
+  queryFn: async () => {
+    const { data } = await api.get<ApiMachineResponse>(PATHS.BASE)
+    return data
+  },
+})
+
+// Fetch single machine by id
+export const machineSpecQueryOptions = (machineId: string) =>
+  queryOptions({
+    queryKey: ['machines', 'spec', machineId],
+    queryFn: async () => {
+      const { data } = await api.get<ApiMachineItem>(PATHS.SINGLE(machineId))
+      return data
+    },
+  })
+
+// Fetch single machine by id - full info
+export const machineSpecInfoQueryOptions = (machineId: string) =>
+  queryOptions({
+    queryKey: ['machines', machineId],
+    queryFn: async () => {
+      const { data } = await api.get<ApiMachineInfo>(
+        PATHS.SINGLE_INFO(machineId),
+      )
+      return data
+    },
+  })

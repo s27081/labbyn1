@@ -1,0 +1,19 @@
+---
+- name: Remove Ansible User
+  hosts: all
+  become: yes
+  vars:
+    ansible_user_name: ansible
+
+  tasks:
+    - name: Remove passwordless sudo access file for ansible user
+      file:
+        path: "/etc/sudoers.d/{{ ansible_user_name }}"
+        state: absent
+
+    - name: Remove ansible user and its home directory
+      user:
+        name: "{{ ansible_user_name }}"
+        state: absent
+        remove: yes
+        force: yes

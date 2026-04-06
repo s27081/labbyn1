@@ -8,11 +8,5 @@ jobs:
         uses: ./.github/workflows/ci-api.yaml
     ci-frontend:
         uses: ./.github/workflows/ci-frontend.yaml
-    ci-prometheus:
-        uses: ./.github/workflows/ci-monitoring.yaml
-        with:
-          monitoring-tool: 'prometheus'
-    ci-grafana:
-        uses: ./.github/workflows/ci-monitoring.yaml
-        with:
-          monitoring-tool: 'grafana'
+    ci-e2e:
+        uses: ./.github/workflows/ci-e2e.yaml
