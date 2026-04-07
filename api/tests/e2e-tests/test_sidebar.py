@@ -8,6 +8,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 BASE_URL = "http://localhost:3000"
 
+#test
+
 
 @pytest.fixture(scope="session")
 def driver():
