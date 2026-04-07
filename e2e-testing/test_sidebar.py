@@ -6,7 +6,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-BASE_URL = "http://localhost:3000"
+BASE_URL = "http://127.0.0.1:3000"
 
 @pytest.fixture(scope="session")
 def driver():
