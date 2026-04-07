@@ -1,0 +1,10 @@
+name: CI E2E Workflow
+on:
+  workflow_call:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+    test-e2e:
+          uses: ./.github/workflows/ci-e2e.yaml
