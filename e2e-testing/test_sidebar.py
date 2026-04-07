@@ -6,19 +6,24 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-BASE_URL = "http://localhost:3000"
+BASE_URL = "http://frontend:3000"
 
 @pytest.fixture(scope="session")
 def driver():
     web_options = Options()
     web_options.add_argument("--kiosk")
+
+    web_options.add_argument("--headless") 
+    web_options.add_argument("--no-sandbox")
+    web_options.add_argument("--disable-dev-shm-usage")
+    
     driver = webdriver.Chrome(options=web_options)
     driver.get(BASE_URL)
 
     yield driver
     driver.quit()
 
-
+#test
 def get_element(driver, element_name):
     return driver.find_elements(By.CSS_SELECTOR, element_name)
 
@@ -26,7 +31,9 @@ def get_element(driver, element_name):
 def login(driver, username="Service", password="Service", timeout=10):
     wait = WebDriverWait(driver, timeout)
     username_input = wait.until(
-        EC.visibility_of_element_located((By.CSS_SELECTOR, 'input[placeholder="Enter your name"]'))
+        EC.visibility_of_element_located(
+            (By.CSS_SELECTOR, 'input[placeholder="Enter your name"]')
+        )
     )
     password_input = wait.until(
         EC.visibility_of_element_located((By.CSS_SELECTOR, 'input[name="password"]'))
@@ -48,7 +55,7 @@ def get_sidebar_elements(driver):
         By.XPATH,
         '//div[@data-slot="sidebar-group-label" and normalize-space()="Overview"]'
         '/ancestor::*[@data-slot="sidebar-group"]'
-        '//*[@data-slot="sidebar-menu-button"]'
+        '//*[@data-slot="sidebar-menu-button"]',
     )
 
 

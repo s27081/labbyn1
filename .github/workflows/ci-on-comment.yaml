@@ -89,9 +89,9 @@ jobs:
             fi
           }
 
+          COMMENT+="$(format_line "E2E Tests" "${{ needs.run-e2e-test-set.result }}")\n"
           COMMENT+="$(format_line "API Tests" "${{ needs.run-api-test-set.result }}")\n"
           COMMENT+="$(format_line "Frontend Tests" "${{ needs.run-frontend-test-set.result }}")\n"
-          COMMENT+="$(format_line "E2E Tests" "${{ needs.run-e2e-test-set.result }}")\n"
 
           echo "comment_body<<EOF" >> $GITHUB_OUTPUT
           echo -e "$COMMENT" >> $GITHUB_OUTPUT
