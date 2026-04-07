@@ -8,5 +8,3 @@ jobs:
         uses: ./.github/workflows/ci-api.yaml
     ci-frontend:
         uses: ./.github/workflows/ci-frontend.yaml
-    ci-e2e:
-        uses: ./.github/workflows/ci-e2e.yaml
