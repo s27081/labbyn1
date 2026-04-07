@@ -7,8 +7,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-import base64
-from pytest_html import extras
 
 from app.database import AsyncSessionLocal
 from app.main import app
