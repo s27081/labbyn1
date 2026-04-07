@@ -12,10 +12,6 @@ BASE_URL = "localhost:3000"
 def driver():
     web_options = Options()
     web_options.add_argument("--kiosk")
-
-    web_options.add_argument("--headless") 
-    web_options.add_argument("--no-sandbox")
-    web_options.add_argument("--disable-dev-shm-usage")
     
     driver = webdriver.Chrome(options=web_options)
     driver.get(BASE_URL)
