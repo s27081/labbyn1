@@ -26,11 +26,3 @@ services:
   redis:
     ports:
       - "6379:6379"
-
-  selenium:
-    image: selenium/standalone-chromium:145.0
-    ports:
-      - "4444:4444"
-      - "7900:7900"
-    depends_on:
-      - frontend

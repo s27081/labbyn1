@@ -8,7 +8,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 BASE_URL = "http://frontend:3000"
 
-
 @pytest.fixture(scope="session")
 def driver():
     web_options = Options()
