@@ -18,6 +18,8 @@ jobs:
                 cache: 'pip'
             - name: Install test dependencies
               run: pip install --no-cache-dir --upgrade -r e2e-testing/requirements.txt
+            - name: Test communication
+              run: curl -i localhost:3000
             - name: Run E2E test
               run: pytest e2e-testing/ --html=report.html --self-contained-html
             - name: Save report
