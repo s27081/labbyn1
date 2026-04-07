@@ -6,23 +6,13 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-BASE_URL = "http://127.0.0.1:3000"
+BASE_URL = "http://localhost:3000/"
 
 @pytest.fixture(scope="session")
 def driver():
     web_options = Options()
     web_options.add_argument("--kiosk")
 
-    # Modern headless mode is much more stable in CI
-    web_options.add_argument("--headless=new")
-    web_options.add_argument("--no-sandbox")
-    web_options.add_argument("--disable-dev-shm-usage")
-    web_options.add_argument("--disable-gpu")
-    
-    # CRITICAL: Force Chrome to bypass CI proxies for local addresses
-    web_options.add_argument("--proxy-server='direct://'")
-    web_options.add_argument("--proxy-bypass-list=*")
-    
     driver = webdriver.Chrome(options=web_options)
     driver.get(BASE_URL)
 
